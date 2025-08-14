@@ -1,7 +1,9 @@
 import { Message } from '@/types/chat';
-import { Bot, User } from 'lucide-react';
+import { Bot, User, FileText, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/lib/chat-store';
+import { parseMessageForJson, validateMindMapData } from '@/lib/utils';
+import { useArtifactStore } from '@/lib/artifact-store';
 
 interface ChatMessageProps {
   message: Message;
@@ -10,7 +12,16 @@ interface ChatMessageProps {
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const { isLoading, streamingMessageId } = useChatStore();
+  const { currentArtifact } = useArtifactStore();
   const isStreaming = isLoading && message.id === streamingMessageId;
+  
+  // Check if this message contains mindmap JSON
+  const mindmapData = !isUser && message.content ? parseMessageForJson(message.content) : null;
+  const hasMindmap = mindmapData && mindmapData.type === 'mindmap' && validateMindMapData(mindmapData.data);
+  
+  // Check if this mindmap is currently displayed
+  const isCurrentMindmap = currentArtifact?.type === 'mindmap' && 
+    currentArtifact.data?.title === mindmapData?.data?.title;
   
   return (
     <div className={cn('flex w-full px-3 py-4 gap-3', {
@@ -39,6 +50,15 @@ export function ChatMessage({ message }: ChatMessageProps) {
           <span className="text-xs text-muted-foreground">
             {isStreaming ? 'typing...' : message.timestamp.toLocaleTimeString()}
           </span>
+          {hasMindmap && (
+            <div className="flex items-center gap-1 text-xs">
+              <FileText className="h-3 w-3 text-blue-500" />
+              <span className="text-blue-600 font-medium">Mind Map</span>
+              {isCurrentMindmap && (
+                <CheckCircle className="h-3 w-3 text-green-500" />
+              )}
+            </div>
+          )}
         </div>
         <div className="text-sm leading-relaxed whitespace-pre-wrap break-words max-w-none">
           {message.content}
@@ -53,6 +73,26 @@ export function ChatMessage({ message }: ChatMessageProps) {
             </div>
           )}
         </div>
+        
+        {/* Mindmap Preview */}
+        {hasMindmap && (
+          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-semibold text-blue-900">
+                {mindmapData.data.title}
+              </h4>
+              <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                {mindmapData.data.children?.length || 0} topics
+              </span>
+            </div>
+            <p className="text-xs text-blue-700 mb-2">
+              {mindmapData.data.description || 'Learning path visualization'}
+            </p>
+            <div className="flex items-center gap-2 text-xs text-blue-600">
+              <span>Click to view full mind map →</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

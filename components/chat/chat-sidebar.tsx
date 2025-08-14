@@ -5,6 +5,7 @@ import { Trash2, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChatMessage } from './chat-message';
 import { ChatInput } from './chat-input';
+import { TestMindmap } from '../test-mindmap';
 import { useChatStore } from '@/lib/chat-store';
 import { useArtifactStore } from '@/lib/artifact-store';
 
@@ -109,6 +110,11 @@ export function ChatSidebar() {
                       {prompt}
                     </Button>
                   ))}
+                </div>
+                
+                {/* Test Mindmap Component */}
+                <div className="mt-6">
+                  <TestMindmap />
                 </div>
               </div>
             </div>

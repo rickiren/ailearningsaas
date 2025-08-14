@@ -3,7 +3,6 @@ import { Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useChatStore } from '@/lib/chat-store';
-import { useArtifactStore } from '@/lib/artifact-store';
 
 export function ChatInput() {
   const [input, setInput] = useState('');
@@ -15,8 +14,6 @@ export function ChatInput() {
     updateStreamingMessage, 
     finishStreamingMessage 
   } = useChatStore();
-  
-  const { addArtifact, updateArtifact } = useArtifactStore();
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
@@ -61,7 +58,6 @@ export function ChatInput() {
 
       const decoder = new TextDecoder();
       let accumulatedContent = '';
-      let currentArtifactId = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -77,9 +73,6 @@ export function ChatInput() {
             
             if (data === '[DONE]') {
               finishStreamingMessage(assistantMessageId);
-              if (currentArtifactId) {
-                updateArtifact(currentArtifactId, { isStreaming: false });
-              }
               return;
             }
 
@@ -92,26 +85,8 @@ export function ChatInput() {
               
               if (parsed.content) {
                 accumulatedContent += parsed.content;
+                // Pass the accumulated content so our mindmap detection can find complete JSON blocks
                 updateStreamingMessage(assistantMessageId, accumulatedContent);
-              }
-
-              // Handle artifact data
-              if (parsed.artifact) {
-                if (!currentArtifactId) {
-                  // Create new artifact
-                  currentArtifactId = addArtifact({
-                    type: parsed.artifact.type,
-                    title: parsed.artifact.title,
-                    data: parsed.artifact.data,
-                    isStreaming: true,
-                  });
-                } else {
-                  // Update existing artifact
-                  updateArtifact(currentArtifactId, {
-                    data: parsed.artifact.data,
-                    isStreaming: true,
-                  });
-                }
               }
             } catch (parseError) {
               // Skip malformed JSON lines
