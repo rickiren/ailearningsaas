@@ -118,3 +118,26 @@ export function validateMindMapData(data: any): boolean {
   
   return validateNode(data);
 }
+
+/**
+ * Processes AI message content to separate conversational text from JSON data
+ * Returns an object with display content (clean text) and extracted JSON
+ */
+export function processAIMessage(content: string): {
+  displayContent: string;
+  jsonData: { type: string; data: Record<string, unknown> } | null;
+} {
+  // Extract JSON for mind map (existing logic)
+  const jsonData = parseMessageForJson(content);
+  
+  // Remove JSON blocks from display content
+  const displayContent = content
+    .replace(/```json\s*[\s\S]*?\s*```/g, '') // Remove JSON code blocks
+    .replace(/```\s*[\s\S]*?\s*```/g, '')     // Remove any other code blocks
+    .trim(); // Clean up whitespace
+  
+  return {
+    displayContent,
+    jsonData
+  };
+}

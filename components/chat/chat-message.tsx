@@ -2,7 +2,7 @@ import { Message } from '@/types/chat';
 import { Bot, User, FileText, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/lib/chat-store';
-import { parseMessageForJson, validateMindMapData } from '@/lib/utils';
+import { processAIMessage, validateMindMapData } from '@/lib/utils';
 import { useArtifactStore } from '@/lib/artifact-store';
 
 interface ChatMessageProps {
@@ -15,13 +15,17 @@ export function ChatMessage({ message }: ChatMessageProps) {
   const { currentArtifact } = useArtifactStore();
   const isStreaming = isLoading && message.id === streamingMessageId;
   
+  // Process AI message to separate conversational text from JSON
+  const { displayContent, jsonData } = !isUser && message.content 
+    ? processAIMessage(message.content) 
+    : { displayContent: message.content, jsonData: null };
+  
   // Check if this message contains mindmap JSON
-  const mindmapData = !isUser && message.content ? parseMessageForJson(message.content) : null;
-  const hasMindmap = mindmapData && mindmapData.type === 'mindmap' && validateMindMapData(mindmapData.data);
+  const hasMindmap = jsonData && jsonData.type === 'mindmap' && validateMindMapData(jsonData.data);
   
   // Check if this mindmap is currently displayed
   const isCurrentMindmap = currentArtifact?.type === 'mindmap' && 
-    currentArtifact.data?.title === mindmapData?.data?.title;
+    currentArtifact.data?.title === jsonData?.data?.title;
   
   return (
     <div className={cn('flex w-full px-3 py-4 gap-3', {
@@ -61,11 +65,11 @@ export function ChatMessage({ message }: ChatMessageProps) {
           )}
         </div>
         <div className="text-sm leading-relaxed whitespace-pre-wrap break-words max-w-none">
-          {message.content}
+          {displayContent}
           {isStreaming && (
             <span className="inline-block w-2 h-4 bg-primary ml-1 animate-pulse" />
           )}
-          {!isUser && !message.content && !isStreaming && (
+          {!isUser && !displayContent && !isStreaming && (
             <div className="flex space-x-1">
               <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce"></div>
               <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
@@ -79,14 +83,14 @@ export function ChatMessage({ message }: ChatMessageProps) {
           <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-blue-900">
-                {mindmapData.data.title}
+                {jsonData.data.title}
               </h4>
               <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
-                {mindmapData.data.children?.length || 0} topics
+                {jsonData.data.children?.length || 0} topics
               </span>
             </div>
             <p className="text-xs text-blue-700 mb-2">
-              {mindmapData.data.description || 'Learning path visualization'}
+              {jsonData.data.description || 'Learning path visualization'}
             </p>
             <div className="flex items-center gap-2 text-xs text-blue-600">
               <span>Click to view full mind map →</span>

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { ChatState, Message } from '@/types/chat';
-import { parseMessageForJson, validateMindMapData } from './utils';
+import { processAIMessage, validateMindMapData } from './utils';
 
 interface ExtendedChatState extends ChatState {
   streamingMessageId: string | null;
@@ -30,7 +30,7 @@ export const useChatStore = create<ExtendedChatState>((set, get) => ({
 
     // Check for mindmap JSON in assistant messages
     if (messageData.role === 'assistant' && messageData.content) {
-      const jsonData = parseMessageForJson(messageData.content);
+      const { jsonData } = processAIMessage(messageData.content);
       if (jsonData && jsonData.type === 'mindmap' && validateMindMapData(jsonData.data)) {
         // Dispatch a custom event to notify the artifact store
         const event = new CustomEvent('mindmap-detected', {
@@ -62,23 +62,8 @@ export const useChatStore = create<ExtendedChatState>((set, get) => ({
       console.log('Content length:', content.length);
       console.log('Content preview:', content.substring(0, 200) + '...');
       
-      // Look for JSON blocks in the content
-      const jsonMatches = content.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/g);
-      console.log('🔍 Found JSON code blocks:', jsonMatches ? jsonMatches.length : 0);
-      
-      if (jsonMatches) {
-        console.log('📋 JSON blocks found:');
-        jsonMatches.forEach((match, index) => {
-          console.log(`Block ${index + 1}:`, match.substring(0, 100) + '...');
-        });
-      }
-      
-      // Also check for JSON without code blocks
-      const jsonRegex = /\{[\s\S]*?"type"\s*:\s*"mindmap"[\s\S]*?\}/;
-      const rawJsonMatch = content.match(jsonRegex);
-      console.log('🔍 Raw JSON match:', rawJsonMatch ? 'Found' : 'Not found');
-      
-      const jsonData = parseMessageForJson(content);
+      // Use the new message processing function
+      const { jsonData } = processAIMessage(content);
       console.log('📋 Parsed JSON data:', jsonData);
       
       if (jsonData && jsonData.type === 'mindmap' && validateMindMapData(jsonData.data)) {
