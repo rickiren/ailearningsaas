@@ -13,6 +13,7 @@ interface MindMapNodeData extends MindMapNode {
   level: number;
   moduleIndex?: number;
   lessonIndex?: number;
+  skillIndex?: number;
   isNew: boolean;
 }
 
@@ -107,6 +108,7 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
     level,
     moduleIndex,
     lessonIndex,
+    skillIndex,
     isNew,
     children
   } = data;
@@ -118,12 +120,16 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
   const getNodeSize = () => {
     if (isRoot) return 'w-80 min-h-32';
     if (level === 1) return 'w-64 min-h-28';
+    if (level === 2) return 'w-56 min-h-24';
+    if (level === 3) return 'w-48 min-h-20'; // Skills are smaller
     return 'w-56 min-h-24';
   };
 
   const getFontSizes = () => {
     if (isRoot) return { title: 'text-lg', meta: 'text-sm' };
     if (level === 1) return { title: 'text-base', meta: 'text-xs' };
+    if (level === 2) return { title: 'text-sm', meta: 'text-xs' };
+    if (level === 3) return { title: 'text-xs', meta: 'text-xs' }; // Skills have smaller text
     return { title: 'text-sm', meta: 'text-xs' };
   };
 
@@ -146,8 +152,15 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
     if (level === 2) {
       return {
         bg: 'bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800',
-        badge: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
-        skills: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+        badge: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-blue-300',
+        skills: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-blue-300',
+      };
+    }
+    if (level === 3) {
+      return {
+        bg: 'bg-purple-50 dark:bg-purple-950 border-purple-200 dark:border-purple-800',
+        badge: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
+        skills: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
       };
     }
     return {
@@ -165,6 +178,7 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
     if (isRoot) return 'COURSE';
     if (level === 1) return `MODULE ${moduleIndex}`;
     if (level === 2) return `LESSON ${lessonIndex}`;
+    if (level === 3) return `SKILL ${skillIndex}`;
     return '';
   };
 
@@ -173,6 +187,7 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
     if (isRoot) return <Target className="h-5 w-5" />;
     if (level === 1) return <BookOpen className="h-5 w-5 text-blue-600 dark:text-blue-400" />;
     if (level === 2) return <Play className="h-5 w-5 text-green-600 dark:text-green-400" />;
+    if (level === 3) return <Target className="h-4 w-4 text-purple-600 dark:text-purple-400" />;
     return null;
   };
 
@@ -261,7 +276,7 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
               </div>
             )}
             
-            {skills.length > 0 && (
+            {skills.length > 0 && level !== 3 && (
               <div className="flex items-center gap-1">
                 <BookOpen className="h-3 w-3" />
                 <span>{skills.length} skills</span>

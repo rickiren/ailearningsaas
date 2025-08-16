@@ -22,20 +22,23 @@ export function TestMindmap() {
         "level": 1,
         "difficulty": "beginner",
         "estimatedHours": 10,
+        "skills": ["Semantic HTML", "Accessibility", "SEO Basics", "Form Handling"],
         "children": [
           {
             "id": "html-structure",
             "title": "Document Structure",
             "level": 2,
             "difficulty": "beginner",
-            "estimatedHours": 2
+            "estimatedHours": 2,
+            "skills": ["DOCTYPE Declaration", "Head Section", "Body Structure"]
           },
           {
             "id": "html-elements",
             "title": "HTML Elements",
             "level": 2,
             "difficulty": "beginner",
-            "estimatedHours": 4
+            "estimatedHours": 4,
+            "skills": ["Text Elements", "Links", "Images", "Lists"]
           }
         ]
       },
@@ -45,20 +48,23 @@ export function TestMindmap() {
         "level": 1,
         "difficulty": "beginner",
         "estimatedHours": 15,
+        "skills": ["Responsive Design", "CSS Grid", "Animations", "CSS Variables"],
         "children": [
           {
             "id": "css-selectors",
             "title": "CSS Selectors",
             "level": 2,
             "difficulty": "beginner",
-            "estimatedHours": 5
+            "estimatedHours": 5,
+            "skills": ["Class Selectors", "ID Selectors", "Attribute Selectors", "Pseudo-classes"]
           },
           {
             "id": "css-layout",
             "title": "Layout & Flexbox",
             "level": 2,
             "difficulty": "intermediate",
-            "estimatedHours": 8
+            "estimatedHours": 8,
+            "skills": ["Flexbox Properties", "Grid Layout", "Positioning", "Box Model"]
           }
         ]
       },
@@ -68,20 +74,23 @@ export function TestMindmap() {
         "level": 1,
         "difficulty": "intermediate",
         "estimatedHours": 25,
+        "skills": ["ES6+ Features", "Async Programming", "Error Handling", "Testing"],
         "children": [
           {
             "id": "js-basics",
             "title": "Variables & Functions",
             "level": 2,
             "difficulty": "beginner",
-            "estimatedHours": 8
+            "estimatedHours": 8,
+            "skills": ["Variable Declaration", "Function Syntax", "Scope", "Closures"]
           },
           {
             "id": "js-dom",
             "title": "DOM Manipulation",
             "level": 2,
             "difficulty": "intermediate",
-            "estimatedHours": 10
+            "estimatedHours": 10,
+            "skills": ["Element Selection", "Event Handling", "DOM Traversal", "Dynamic Content"]
           }
         ]
       }
@@ -90,7 +99,7 @@ export function TestMindmap() {
 }
 \`\`\`
 
-This learning path covers the essential skills needed to become a web developer. Start with HTML to understand structure, then move to CSS for styling, and finally learn JavaScript for interactivity.`;
+This learning path covers the essential skills needed to become a web developer. Start with HTML to understand structure, then move to CSS for styling, and finally learn JavaScript for interactivity. Each module and lesson includes specific skills that will be mastered.`;
 
   const handleTestMindmap = () => {
     addMessage({

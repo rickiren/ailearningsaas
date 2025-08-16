@@ -53,6 +53,17 @@ const LearningPathBackground = ({ totalModules }: { totalModules: number }) => {
           strokeDasharray="3,3"
         />
         
+        {/* Skills level horizontal line */}
+        <line
+          x1="100"
+          y1="700"
+          x2={100 + Math.min(totalModules * 5, 15) * 200}
+          y2="700"
+          stroke="#e5e7eb"
+          strokeWidth="1"
+          strokeDasharray="2,2"
+        />
+        
         {/* Vertical connection lines */}
         {Array.from({ length: totalModules }, (_, i) => (
           <line
@@ -60,7 +71,7 @@ const LearningPathBackground = ({ totalModules }: { totalModules: number }) => {
             x1={100 + i * 400}
             y1="300"
             x2={100 + i * 400}
-            y2="500"
+            y2="700"
             stroke="#e5e7eb"
             strokeWidth="1"
             strokeDasharray="3,3"
@@ -110,6 +121,7 @@ export function MindMapCanvas({ data, isStreaming }: MindMapCanvasProps) {
     // Layout configuration
     const MODULE_SPACING = 400; // Horizontal spacing between modules
     const LESSON_SPACING = 300; // Horizontal spacing between lessons
+    const SKILL_SPACING = 200; // Horizontal spacing between skills
     const VERTICAL_SPACING = 200; // Vertical spacing between levels
     const START_X = 100; // Starting X position
     const START_Y = 100; // Starting Y position
@@ -119,6 +131,7 @@ export function MindMapCanvas({ data, isStreaming }: MindMapCanvasProps) {
       level: number = 0, 
       moduleIndex: number = 0, 
       lessonIndex: number = 0,
+      skillIndex: number = 0,
       parentId?: string
     ) => {
       let x = START_X, y = START_Y;
@@ -135,6 +148,10 @@ export function MindMapCanvas({ data, isStreaming }: MindMapCanvasProps) {
         // Lesson level - horizontal row below modules
         x = START_X + lessonIndex * LESSON_SPACING;
         y = START_Y + VERTICAL_SPACING * 2;
+      } else if (level === 3) {
+        // Skill level - horizontal row below lessons/modules
+        x = START_X + skillIndex * SKILL_SPACING;
+        y = START_Y + VERTICAL_SPACING * 3;
       }
 
       const flowNode: Node = {
@@ -147,6 +164,7 @@ export function MindMapCanvas({ data, isStreaming }: MindMapCanvasProps) {
           level,
           moduleIndex: level === 1 ? moduleIndex + 1 : undefined,
           lessonIndex: level === 2 ? lessonIndex + 1 : undefined,
+          skillIndex: level === 3 ? skillIndex + 1 : undefined,
           isNew: false,
         },
         sourcePosition: level === 0 ? Position.Bottom : Position.Right,
@@ -190,17 +208,99 @@ export function MindMapCanvas({ data, isStreaming }: MindMapCanvasProps) {
           };
           flowEdges.push(edge);
 
+          // Handle skills for this node
+          if (child.skills && child.skills.length > 0) {
+            child.skills.forEach((skill, skillIdx) => {
+              const skillNode: MindMapNode = {
+                id: `${child.id}-skill-${skillIdx}`,
+                title: skill,
+                description: `Skill: ${skill}`,
+                level: 3,
+                difficulty: child.difficulty || 'beginner',
+                estimatedHours: 1, // Default skill time
+              };
+              
+              // Position skills relative to their parent
+              let skillX: number;
+              if (level === 1) {
+                // Skills under modules
+                skillX = START_X + moduleIndex * MODULE_SPACING + (skillIdx - Math.floor((child.skills?.length || 0) / 2)) * SKILL_SPACING;
+              } else if (level === 2) {
+                // Skills under lessons
+                skillX = START_X + lessonIndex * LESSON_SPACING + (skillIdx - Math.floor((child.skills?.length || 0) / 2)) * SKILL_SPACING;
+              } else {
+                skillX = START_X + skillIdx * SKILL_SPACING;
+              }
+              
+              const skillY = START_Y + VERTICAL_SPACING * 3;
+              
+              const skillFlowNode: Node = {
+                id: skillNode.id,
+                type: 'mindMapNode',
+                position: { x: skillX, y: skillY },
+                data: {
+                  ...skillNode,
+                  isRoot: false,
+                  level: 3,
+                  moduleIndex: level === 1 ? moduleIndex + 1 : undefined,
+                  lessonIndex: level === 2 ? lessonIndex + 1 : undefined,
+                  skillIndex: skillIdx + 1,
+                  isNew: false,
+                },
+                sourcePosition: Position.Right,
+                targetPosition: Position.Left,
+              };
+              
+              flowNodes.push(skillFlowNode);
+              
+              // Create edge from parent to skill
+              const skillEdge: Edge = {
+                id: `${child.id}-${skillNode.id}`,
+                source: child.id,
+                target: skillNode.id,
+                type: 'smoothstep',
+                animated: isStreaming,
+                markerEnd: {
+                  type: MarkerType.ArrowClosed,
+                  width: 16,
+                  height: 16,
+                },
+                style: {
+                  strokeWidth: 2,
+                  stroke: '#a78bfa',
+                  strokeDasharray: '3,3',
+                },
+                label: '',
+                labelStyle: {
+                  fill: '#a78bfa',
+                  fontSize: 12,
+                  fontWeight: 'normal',
+                },
+                labelBgStyle: {
+                  fill: '#ffffff',
+                  fillOpacity: 0.8,
+                },
+                labelBgPadding: [2, 2],
+                labelBgBorderRadius: 2,
+              };
+              flowEdges.push(skillEdge);
+            });
+          }
+
           // Recursively add child nodes
           if (level === 0) {
             // Adding modules
-            addNode(child, level + 1, index, 0, node.id);
+            addNode(child, level + 1, index, 0, 0, node.id);
           } else if (level === 1) {
             // Adding lessons under modules
             if (child.children) {
               child.children.forEach((lesson, lessonIdx) => {
-                addNode(lesson, level + 1, moduleIndex, lessonIdx, child.id);
+                addNode(lesson, level + 1, moduleIndex, lessonIdx, 0, child.id);
               });
             }
+            // Skills are now handled directly above
+          } else if (level === 2) {
+            // Skills are now handled directly above
           }
         });
       }
@@ -406,6 +506,8 @@ export function MindMapCanvas({ data, isStreaming }: MindMapCanvasProps) {
             <span>Modules</span>
             <ArrowRight className="h-3 w-3" />
             <span>Lessons</span>
+            <ArrowRight className="h-3 w-3" />
+            <span>Skills</span>
           </div>
         </div>
       </div>
@@ -447,6 +549,11 @@ export function MindMapCanvas({ data, isStreaming }: MindMapCanvasProps) {
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-green-500 rounded-full" />
             <span>Lesson</span>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-purple-500 rounded-full" />
+            <span>Skill</span>
           </div>
         </div>
       </div>
