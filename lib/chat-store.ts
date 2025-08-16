@@ -1,24 +1,43 @@
 import { create } from 'zustand';
-import { ChatState, Message } from '@/types/chat';
+import { ChatState, Message, Conversation } from '@/types/chat';
 import { processAIMessage, validateMindMapData } from './utils';
+import { ConversationStore } from './conversation-store';
+
+interface StreamingJsonData {
+  type: string;
+  data: Record<string, unknown>;
+  title: string;
+  isComplete: boolean;
+}
 
 interface ExtendedChatState extends ChatState {
   streamingMessageId: string | null;
+  streamingJson: StreamingJsonData | null;
   updateStreamingMessage: (id: string, content: string) => void;
   finishStreamingMessage: (id: string) => void;
+  setStreamingJson: (data: StreamingJsonData | null) => void;
+  setCurrentConversation: (conversationId: string | null) => void;
+  loadConversation: (conversationId: string) => Promise<void>;
+  createNewConversation: () => Promise<string>;
+  loadConversations: () => Promise<void>;
+  deleteConversation: (conversationId: string) => Promise<void>;
 }
 
 export const useChatStore = create<ExtendedChatState>((set, get) => ({
   messages: [],
+  currentConversationId: null,
+  conversations: [],
   isLoading: false,
   error: null,
   streamingMessageId: null,
+  streamingJson: null,
 
   addMessage: (messageData) => {
     const message: Message = {
       ...messageData,
       id: crypto.randomUUID(),
       timestamp: new Date(),
+      conversation_id: get().currentConversationId || undefined,
     };
     
     set((state) => ({
@@ -48,58 +67,152 @@ export const useChatStore = create<ExtendedChatState>((set, get) => ({
   },
 
   updateStreamingMessage: (id, content) => {
+    // Process the message to separate conversational text from JSON
+    const { displayContent, jsonData } = processAIMessage(content);
+    
+    // Update the message with clean display content (without JSON)
     set((state) => ({
       messages: state.messages.map((msg) =>
         msg.id === id
-          ? { ...msg, content }
+          ? { ...msg, content: displayContent }
           : msg
       ),
     }));
 
-    // Check for mindmap JSON in streaming content
-    if (content) {
-      console.log('🔍 Checking streaming content for mindmap JSON...');
-      console.log('Content length:', content.length);
-      console.log('Content preview:', content.substring(0, 200) + '...');
-      
-      // Use the new message processing function
-      const { jsonData } = processAIMessage(content);
-      console.log('📋 Parsed JSON data:', jsonData);
-      
-      if (jsonData && jsonData.type === 'mindmap' && validateMindMapData(jsonData.data)) {
-        console.log('✅ Mindmap detected! Dispatching event...');
-        // Dispatch a custom event to notify the artifact store
-        const event = new CustomEvent('mindmap-streaming', {
-          detail: {
-            type: 'mindmap',
-            title: jsonData.data.title || 'Learning Path',
-            data: jsonData.data,
-            isStreaming: true,
-          }
-        });
-        window.dispatchEvent(event);
-        console.log('🚀 Event dispatched:', event.detail);
-      } else {
-        console.log('❌ No valid mindmap found in this content');
-        
-        // Show the last part of content to see if JSON is there
-        const lastPart = content.substring(Math.max(0, content.length - 500));
-        console.log('🔍 Last 500 characters of content:', lastPart);
-      }
+    // Handle streaming JSON separately
+    if (jsonData && jsonData.type === 'mindmap' && validateMindMapData(jsonData.data)) {
+      set((state) => ({
+        ...state,
+        streamingJson: {
+          type: jsonData.type,
+          data: jsonData.data,
+          title: (jsonData.data.title as string) || 'Learning Path',
+          isComplete: false,
+        }
+      }));
     }
   },
 
   finishStreamingMessage: (id) => {
-    set({ streamingMessageId: null, isLoading: false });
-    
-    // Dispatch event to mark streaming as finished
-    const event = new CustomEvent('mindmap-streaming-finished');
-    window.dispatchEvent(event);
+    set((state) => ({ 
+      ...state,
+      streamingMessageId: null, 
+      isLoading: false,
+      streamingJson: state.streamingJson ? {
+        ...state.streamingJson,
+        isComplete: true
+      } : null
+    }));
+  },
+
+  setStreamingJson: (data) => {
+    set({ streamingJson: data });
+  },
+
+  setCurrentConversation: (conversationId) => {
+    set({ currentConversationId: conversationId });
+  },
+
+  loadConversation: async (conversationId: string) => {
+    try {
+      set({ isLoading: true, error: null });
+      
+      // Load conversation details
+      const conversation = await ConversationStore.getConversation(conversationId);
+      if (!conversation) {
+        throw new Error('Conversation not found');
+      }
+
+      // Load recent messages (last 30 for context)
+      const messages = await ConversationStore.getRecentMessages(conversationId, 30);
+      
+      // Convert to local Message format
+      const localMessages: Message[] = messages.map(msg => ({
+        id: msg.id,
+        content: msg.content,
+        role: msg.role,
+        timestamp: new Date(msg.created_at),
+        conversation_id: msg.conversation_id,
+        metadata: msg.metadata,
+        artifact_data: msg.artifact_data,
+      }));
+
+      set({
+        messages: localMessages,
+        currentConversationId: conversationId,
+      });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : 'Failed to load conversation' });
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  createNewConversation: async () => {
+    try {
+      set({ isLoading: true, error: null });
+      
+      // Create new conversation with placeholder title
+      const conversation = await ConversationStore.createConversation('New Conversation');
+      
+      // Clear current messages and set new conversation
+      set({
+        messages: [],
+        currentConversationId: conversation.id,
+      });
+
+      // Refresh the conversations list to include the new one
+      await get().loadConversations();
+
+      return conversation.id;
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : 'Failed to create conversation' });
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  loadConversations: async () => {
+    try {
+      set({ isLoading: true, error: null });
+      
+      const conversations = await ConversationStore.getConversations();
+      set({ conversations });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : 'Failed to load conversations' });
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  deleteConversation: async (conversationId: string) => {
+    try {
+      set({ isLoading: true, error: null });
+      await ConversationStore.deleteConversation(conversationId);
+      set((state) => ({
+        conversations: state.conversations.filter(
+          (conversation) => conversation.id !== conversationId
+        ),
+        currentConversationId:
+          state.currentConversationId === conversationId ? null : state.currentConversationId,
+      }));
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : 'Failed to delete conversation' });
+    } finally {
+      set({ isLoading: false });
+    }
   },
 
   setLoading: (loading) => set({ isLoading: loading }),
 
   setError: (error) => set({ error }),
 
-  clearMessages: () => set({ messages: [], error: null, streamingMessageId: null }),
+  clearMessages: () => set({ 
+    messages: [], 
+    error: null, 
+    streamingMessageId: null, 
+    streamingJson: null,
+    currentConversationId: null 
+  }),
 }));

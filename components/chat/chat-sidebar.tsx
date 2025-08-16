@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { Trash2, MessageCircle } from 'lucide-react';
+import { Trash2, MessageCircle, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChatMessage } from './chat-message';
 import { ChatInput } from './chat-input';
 import { TestMindmap } from '../test-mindmap';
 import { useChatStore } from '@/lib/chat-store';
 import { useArtifactStore } from '@/lib/artifact-store';
+import { ConversationTabs } from './conversation-tabs';
 
 const EXAMPLE_PROMPTS = [
   "Create a JavaScript learning path for complete beginners",
@@ -17,7 +18,14 @@ const EXAMPLE_PROMPTS = [
 ];
 
 export function ChatSidebar() {
-  const { messages, clearMessages, isLoading, addMessage } = useChatStore();
+  const { 
+    messages, 
+    clearMessages, 
+    isLoading, 
+    addMessage, 
+    currentConversationId,
+    loadConversations 
+  } = useChatStore();
   const { currentArtifact } = useArtifactStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -28,6 +36,10 @@ export function ChatSidebar() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
 
   const handleExampleClick = async (prompt: string) => {
     if (isLoading) return;
@@ -56,16 +68,18 @@ export function ChatSidebar() {
               </p>
             </div>
           </div>
-          {messages.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearMessages}
-              className="h-8 w-8 p-0"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {messages.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearMessages}
+                className="h-8 w-8 p-0"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Artifact Status */}
@@ -81,6 +95,9 @@ export function ChatSidebar() {
           </div>
         )}
       </header>
+
+      {/* Conversation Tabs */}
+      <ConversationTabs />
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">

@@ -12,7 +12,8 @@ export function ChatInput() {
     setError, 
     isLoading, 
     updateStreamingMessage, 
-    finishStreamingMessage 
+    finishStreamingMessage,
+    currentConversationId
   } = useChatStore();
 
   const sendMessage = async () => {
@@ -42,7 +43,10 @@ export function ChatInput() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: userMessage }),
+        body: JSON.stringify({ 
+          message: userMessage,
+          conversation_id: currentConversationId 
+        }),
       });
 
       if (!response.ok) {

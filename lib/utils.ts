@@ -131,13 +131,30 @@ export function processAIMessage(content: string): {
   const jsonData = parseMessageForJson(content);
   
   // Remove JSON blocks from display content
-  const displayContent = content
+  let displayContent = content
     .replace(/```json\s*[\s\S]*?\s*```/g, '') // Remove JSON code blocks
     .replace(/```\s*[\s\S]*?\s*```/g, '')     // Remove any other code blocks
     .trim(); // Clean up whitespace
+  
+  // Also remove any raw JSON objects that look like mindmaps
+  if (jsonData) {
+    // Remove any large JSON objects from the display content
+    displayContent = displayContent
+      .replace(/\{[^{}]*"children"[^{}]*\}/g, '')
+      .replace(/\{[\s\S]*?"type"\s*:\s*"mindmap"[\s\S]*?\}/g, '')
+      .trim();
+  }
   
   return {
     displayContent,
     jsonData
   };
+}
+
+/**
+ * Checks if content contains streaming JSON that should be hidden from chat display
+ */
+export function hasStreamingJson(content: string): boolean {
+  const jsonData = parseMessageForJson(content);
+  return jsonData !== null;
 }

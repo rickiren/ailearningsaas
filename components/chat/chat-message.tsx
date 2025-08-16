@@ -78,8 +78,8 @@ export function ChatMessage({ message }: ChatMessageProps) {
           )}
         </div>
         
-        {/* Mindmap Preview */}
-        {hasMindmap && (
+        {/* Mindmap Preview - Only show if not currently streaming */}
+        {hasMindmap && !isStreaming && (
           <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-blue-900">

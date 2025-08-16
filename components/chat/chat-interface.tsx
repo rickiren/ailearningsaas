@@ -5,8 +5,11 @@ import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChatMessage } from './chat-message';
 import { ChatInput } from './chat-input';
+
 import { useChatStore } from '@/lib/chat-store';
 import { useArtifactStore } from '@/lib/artifact-store';
+import { ConversationList } from './conversation-list';
+import { JsonCodeBlock } from './json-code-block';
 
 const EXAMPLE_PROMPTS = [
   "I want to create a learning path for JavaScript programming",
@@ -23,7 +26,10 @@ export function ChatInterface() {
     addMessage, 
     setLoading, 
     updateStreamingMessage, 
-    finishStreamingMessage 
+    finishStreamingMessage,
+    streamingJson,
+    currentConversationId,
+    createNewConversation
   } = useChatStore();
   
   const { addArtifact, updateArtifact } = useArtifactStore();
@@ -60,7 +66,10 @@ export function ChatInterface() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: prompt }),
+        body: JSON.stringify({ 
+          message: prompt,
+          conversation_id: currentConversationId 
+        }),
       });
 
       if (!response.ok) {
@@ -147,29 +156,36 @@ export function ChatInterface() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-3">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold">AI Learning Path Creator</h1>
-            <p className="text-sm text-muted-foreground">
-              Get help creating comprehensive learning paths for any skill
-            </p>
+    <div className="flex h-screen bg-background">
+      {/* Conversation Sidebar */}
+      <div className="w-80 border-r bg-muted/10">
+        <ConversationList />
+      </div>
+
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-semibold">AI Learning Path Creator</h1>
+              <p className="text-sm text-muted-foreground">
+                Get help creating comprehensive learning paths for any skill
+              </p>
+            </div>
+            {messages.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearMessages}
+                className="gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
+                Clear Chat
+              </Button>
+            )}
           </div>
-          {messages.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={clearMessages}
-              className="gap-2"
-            >
-              <Trash2 className="h-4 w-4" />
-              Clear Chat
-            </Button>
-          )}
-        </div>
-      </header>
+        </header>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
@@ -204,14 +220,27 @@ export function ChatInterface() {
           <div className="space-y-0">
             {messages.map((message) => (
               <ChatMessage key={message.id} message={message} />
-            ))}
+                        ))}
+            
+            {/* Streaming JSON Display */}
+            {streamingJson && (
+              <div className="px-3 py-4">
+                <JsonCodeBlock 
+                  data={streamingJson.data}
+                  title={`Learning Path: ${streamingJson.title}`}
+                  isStreaming={!streamingJson.isComplete}
+                />
+              </div>
+            )}
+            
             <div ref={messagesEndRef} />
           </div>
         )}
       </div>
 
-      {/* Input */}
-      <ChatInput />
+        {/* Input */}
+        <ChatInput />
+      </div>
     </div>
   );
 }
