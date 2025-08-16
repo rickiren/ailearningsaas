@@ -18,8 +18,57 @@ import {
 import 'reactflow/dist/style.css';
 
 import { MindMapNode } from '@/types/artifacts';
-import { Target } from 'lucide-react';
+import { Target, ArrowRight } from 'lucide-react';
 import { MindMapNodeComponent } from './mind-map-node';
+import { cn } from '@/lib/utils';
+
+// Custom background component for learning path structure
+const LearningPathBackground = ({ totalModules }: { totalModules: number }) => {
+  if (totalModules === 0) return null;
+  
+  return (
+    <div className="absolute inset-0 pointer-events-none">
+      {/* Learning path structure lines */}
+      <svg className="w-full h-full">
+        {/* Module level horizontal line */}
+        <line
+          x1="100"
+          y1="300"
+          x2={100 + totalModules * 400}
+          y2="300"
+          stroke="#e5e7eb"
+          strokeWidth="2"
+          strokeDasharray="5,5"
+        />
+        
+        {/* Lesson level horizontal line */}
+        <line
+          x1="100"
+          y1="500"
+          x2={100 + Math.min(totalModules * 3, 10) * 300}
+          y2="500"
+          stroke="#e5e7eb"
+          strokeWidth="1"
+          strokeDasharray="3,3"
+        />
+        
+        {/* Vertical connection lines */}
+        {Array.from({ length: totalModules }, (_, i) => (
+          <line
+            key={i}
+            x1={100 + i * 400}
+            y1="300"
+            x2={100 + i * 400}
+            y2="500"
+            stroke="#e5e7eb"
+            strokeWidth="1"
+            strokeDasharray="3,3"
+          />
+        ))}
+      </svg>
+    </div>
+  );
+};
 
 interface MindMapCanvasProps {
   data: MindMapNode;
@@ -35,33 +84,55 @@ export function MindMapCanvas({ data, isStreaming }: MindMapCanvasProps) {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [isLayoutCalculated, setIsLayoutCalculated] = useState(false);
 
-  // Convert hierarchical data to React Flow nodes and edges
+  // Calculate total modules and lessons for layout planning
+  const getTotalModules = useCallback((node: MindMapNode): number => {
+    if (!node.children) return 0;
+    return node.children.length;
+  }, []);
+
+  const getTotalLessons = useCallback((node: MindMapNode): number => {
+    if (!node.children) return 0;
+    return node.children.reduce((total, child) => {
+      return total + (child.children ? child.children.length : 0);
+    }, 0);
+  }, []);
+
+  const totalModules = data ? getTotalModules(data) : 0;
+  const totalLessons = data ? getTotalLessons(data) : 0;
+
+  // Convert hierarchical data to React Flow nodes and edges with linear progression layout
   const convertToFlowData = useCallback((rootNode: MindMapNode) => {
     const flowNodes: Node[] = [];
     const flowEdges: Edge[] = [];
     
-    const addNode = (node: MindMapNode, level: number = 0, parentPos?: { x: number; y: number }, siblingIndex: number = 0, totalSiblings: number = 1) => {
-      // Calculate position using radial layout for better mind map appearance
-      let x = 0, y = 0;
+    // Layout configuration
+    const MODULE_SPACING = 400; // Horizontal spacing between modules
+    const LESSON_SPACING = 300; // Horizontal spacing between lessons
+    const VERTICAL_SPACING = 200; // Vertical spacing between levels
+    const START_X = 100; // Starting X position
+    const START_Y = 100; // Starting Y position
+
+    const addNode = (
+      node: MindMapNode, 
+      level: number = 0, 
+      moduleIndex: number = 0, 
+      lessonIndex: number = 0,
+      parentId?: string
+    ) => {
+      let x = START_X, y = START_Y;
       
       if (level === 0) {
-        // Root node at center
-        x = 0;
-        y = 0;
+        // Root node (course title) at top center
+        x = START_X + (totalModules * MODULE_SPACING) / 2;
+        y = START_Y;
       } else if (level === 1) {
-        // First level in circle around root
-        const angle = (siblingIndex / totalSiblings) * 2 * Math.PI;
-        const radius = 300;
-        x = Math.cos(angle) * radius;
-        y = Math.sin(angle) * radius;
-      } else {
-        // Subsequent levels branch out
-        const baseAngle = parentPos ? Math.atan2(parentPos.y, parentPos.x) : 0;
-        const spreadAngle = Math.PI / 4; // 45 degree spread
-        const angle = baseAngle + (siblingIndex - (totalSiblings - 1) / 2) * (spreadAngle / Math.max(1, totalSiblings - 1));
-        const radius = 200 + level * 100;
-        x = (parentPos?.x || 0) + Math.cos(angle) * radius;
-        y = (parentPos?.y || 0) + Math.sin(angle) * radius;
+        // Module level - horizontal row below root
+        x = START_X + moduleIndex * MODULE_SPACING;
+        y = START_Y + VERTICAL_SPACING;
+      } else if (level === 2) {
+        // Lesson level - horizontal row below modules
+        x = START_X + lessonIndex * LESSON_SPACING;
+        y = START_Y + VERTICAL_SPACING * 2;
       }
 
       const flowNode: Node = {
@@ -72,10 +143,12 @@ export function MindMapCanvas({ data, isStreaming }: MindMapCanvasProps) {
           ...node,
           isRoot: level === 0,
           level,
-          isNew: false, // Will be set later for animation
+          moduleIndex: level === 1 ? moduleIndex + 1 : undefined,
+          lessonIndex: level === 2 ? lessonIndex + 1 : undefined,
+          isNew: false,
         },
-        sourcePosition: Position.Right,
-        targetPosition: Position.Left,
+        sourcePosition: level === 0 ? Position.Bottom : Position.Right,
+        targetPosition: level === 0 ? Position.Top : Position.Left,
       };
 
       flowNodes.push(flowNode);
@@ -92,25 +165,48 @@ export function MindMapCanvas({ data, isStreaming }: MindMapCanvasProps) {
             animated: isStreaming,
             markerEnd: {
               type: MarkerType.ArrowClosed,
-              width: 15,
-              height: 15,
+              width: 20,
+              height: 20,
             },
             style: {
-              strokeWidth: 2,
+              strokeWidth: level === 0 ? 4 : 3,
               stroke: level === 0 ? '#6366f1' : '#94a3b8',
+              strokeDasharray: level === 0 ? '0' : '5,5',
             },
+            label: level === 0 ? '→' : '',
+            labelStyle: {
+              fill: level === 0 ? '#6366f1' : '#94a3b8',
+              fontSize: 16,
+              fontWeight: 'bold',
+            },
+            labelBgStyle: {
+              fill: '#ffffff',
+              fillOpacity: 0.8,
+            },
+            labelBgPadding: [4, 4],
+            labelBgBorderRadius: 4,
           };
           flowEdges.push(edge);
 
           // Recursively add child nodes
-          addNode(child, level + 1, { x, y }, index, node.children!.length);
+          if (level === 0) {
+            // Adding modules
+            addNode(child, level + 1, index, 0, node.id);
+          } else if (level === 1) {
+            // Adding lessons under modules
+            if (child.children) {
+              child.children.forEach((lesson, lessonIdx) => {
+                addNode(lesson, level + 1, moduleIndex, lessonIdx, child.id);
+              });
+            }
+          }
         });
       }
     };
 
     addNode(rootNode);
     return { nodes: flowNodes, edges: flowEdges };
-  }, [isStreaming]);
+  }, [isStreaming, totalModules]);
 
   // Update flow data when mind map data changes
   useEffect(() => {
@@ -201,7 +297,65 @@ export function MindMapCanvas({ data, isStreaming }: MindMapCanvasProps) {
   }
 
   return (
-    <div className="h-full bg-gradient-to-br from-background to-muted/20">
+    <div className="h-full bg-gradient-to-br from-background to-muted/20 relative">
+      {/* Learning Path Progress Indicator */}
+      <div className="absolute top-4 left-4 z-10 bg-background/90 backdrop-blur-sm border rounded-lg p-3 shadow-lg">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Target className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium">Learning Path</span>
+          </div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <span>Course</span>
+            <ArrowRight className="h-3 w-3" />
+            <span>Modules</span>
+            <ArrowRight className="h-3 w-3" />
+            <span>Lessons</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Step-by-Step Progress Indicator */}
+      <div className="absolute top-4 right-4 z-10 bg-background/90 backdrop-blur-sm border rounded-lg p-3 shadow-lg">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">Progress:</span>
+          <div className="flex items-center gap-1">
+            {Array.from({ length: Math.min(totalModules, 5) }, (_, i) => (
+              <div
+                key={i}
+                className={cn(
+                  'w-2 h-2 rounded-full',
+                  i === 0 ? 'bg-primary' : 'bg-muted'
+                )}
+              />
+            ))}
+            {totalModules > 5 && (
+              <span className="text-xs text-muted-foreground ml-1">
+                +{totalModules - 5}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Learning Path Legend */}
+      <div className="absolute bottom-4 left-4 z-10 bg-background/90 backdrop-blur-sm border rounded-lg p-3 shadow-lg">
+        <div className="text-xs text-muted-foreground space-y-1">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-primary rounded-full" />
+            <span>Course Start</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-blue-500 rounded-full" />
+            <span>Module</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-green-500 rounded-full" />
+            <span>Lesson</span>
+          </div>
+        </div>
+      </div>
+
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -211,20 +365,20 @@ export function MindMapCanvas({ data, isStreaming }: MindMapCanvasProps) {
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{
-          padding: 0.2,
-          minZoom: 0.1,
-          maxZoom: 1.5,
+          padding: 0.3,
+          minZoom: 0.3,
+          maxZoom: 1.2,
         }}
-        defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-        minZoom={0.1}
+        defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
+        minZoom={0.2}
         maxZoom={2}
         snapToGrid
-        snapGrid={[15, 15]}
+        snapGrid={[20, 20]}
         className="bg-transparent"
       >
         <Background 
           color="#94a3b8" 
-          gap={20} 
+          gap={30} 
           size={1}
         />
         <Controls 
@@ -240,6 +394,7 @@ export function MindMapCanvas({ data, isStreaming }: MindMapCanvasProps) {
           zoomable
           className="bg-background border shadow-lg"
         />
+        <LearningPathBackground totalModules={totalModules} />
       </ReactFlow>
       
       {/* Streaming Indicator */}

@@ -2,7 +2,7 @@
 
 import { memo, useState, useRef } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
-import { Clock, Target, BookOpen, ChevronDown, ChevronRight } from 'lucide-react';
+import { Clock, Target, BookOpen, ChevronDown, ChevronRight, ArrowRight, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MindMapNode } from '@/types/artifacts';
 import { NodeTooltip } from './node-tooltip';
@@ -10,6 +10,8 @@ import { NodeTooltip } from './node-tooltip';
 interface MindMapNodeData extends MindMapNode {
   isRoot: boolean;
   level: number;
+  moduleIndex?: number;
+  lessonIndex?: number;
   isNew: boolean;
 }
 
@@ -19,18 +21,21 @@ const DIFFICULTY_COLORS = {
     border: 'border-green-200 dark:border-green-800',
     text: 'text-green-800 dark:text-green-200',
     badge: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+    progress: 'bg-green-500',
   },
   intermediate: {
     bg: 'bg-yellow-50 dark:bg-yellow-950',
     border: 'border-yellow-200 dark:border-yellow-800',
     text: 'text-yellow-800 dark:text-yellow-200',
     badge: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
+    progress: 'bg-yellow-500',
   },
   advanced: {
     bg: 'bg-red-50 dark:bg-red-950',
     border: 'border-red-200 dark:border-red-800',
     text: 'text-red-800 dark:text-red-200',
     badge: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+    progress: 'bg-red-500',
   },
 };
 
@@ -53,6 +58,7 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
   const handleMouseLeave = () => {
     setShowTooltip(false);
   };
+
   const {
     title,
     description,
@@ -61,6 +67,8 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
     skills = [],
     isRoot,
     level,
+    moduleIndex,
+    lessonIndex,
     isNew,
     children
   } = data;
@@ -81,7 +89,54 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
     return { title: 'text-sm', meta: 'text-xs' };
   };
 
+  // Get level-specific styling
+  const getLevelStyling = () => {
+    if (isRoot) {
+      return {
+        bg: 'bg-primary text-primary-foreground border-primary',
+        badge: 'bg-primary-foreground/20 text-primary-foreground',
+        skills: 'bg-primary-foreground/20 text-primary-foreground',
+      };
+    }
+    if (level === 1) {
+      return {
+        bg: 'bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800',
+        badge: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+        skills: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+      };
+    }
+    if (level === 2) {
+      return {
+        bg: 'bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800',
+        badge: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+        skills: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+      };
+    }
+    return {
+      bg: 'bg-background',
+      badge: colors.badge,
+      skills: 'bg-muted text-muted-foreground',
+    };
+  };
+
   const fontSizes = getFontSizes();
+  const levelStyling = getLevelStyling();
+
+  // Get progression indicator text
+  const getProgressionText = () => {
+    if (isRoot) return 'COURSE';
+    if (level === 1) return `MODULE ${moduleIndex}`;
+    if (level === 2) return `LESSON ${lessonIndex}`;
+    return '';
+  };
+
+  // Get progression icon
+  const getProgressionIcon = () => {
+    if (isRoot) return <Target className="h-5 w-5" />;
+    if (level === 1) return <BookOpen className="h-5 w-5 text-blue-600 dark:text-blue-400" />;
+    if (level === 2) return <Play className="h-5 w-5 text-green-600 dark:text-green-400" />;
+    return null;
+  };
 
   return (
     <>
@@ -92,9 +147,7 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
         className={cn(
           'relative rounded-xl border-2 shadow-lg transition-all duration-300 hover:shadow-xl cursor-pointer',
           getNodeSize(),
-          isRoot 
-            ? 'bg-primary text-primary-foreground border-primary' 
-            : cn('bg-background', colors.border),
+          levelStyling.bg,
           selected && 'ring-2 ring-primary ring-offset-2',
           isNew && 'animate-in zoom-in-50 fade-in duration-700'
         )}
@@ -110,9 +163,20 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
 
       {/* Node Content */}
       <div className="p-4 h-full flex flex-col">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-2">
+        {/* Header with Progression Indicator */}
+        <div className="flex items-start justify-between mb-3">
           <div className="flex-1 min-w-0">
+            {/* Progression Badge */}
+            <div className="flex items-center gap-2 mb-2">
+              <div className={cn(
+                'px-2 py-1 rounded-full text-xs font-bold tracking-wide',
+                levelStyling.badge
+              )}>
+                {getProgressionText()}
+              </div>
+              {getProgressionIcon()}
+            </div>
+            
             <h3 className={cn('font-semibold leading-tight', fontSizes.title)}>
               {title}
             </h3>
@@ -124,20 +188,6 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
               )}>
                 {description}
               </p>
-            )}
-          </div>
-          
-          {/* Level Indicator */}
-          <div className="ml-2 shrink-0">
-            {isRoot ? (
-              <Target className="h-5 w-5" />
-            ) : (
-              <div className={cn(
-                'w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium',
-                isRoot ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-muted-foreground'
-              )}>
-                {level}
-              </div>
             )}
           </div>
         </div>
@@ -182,9 +232,7 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
                     key={index}
                     className={cn(
                       'px-2 py-0.5 rounded text-xs',
-                      isRoot 
-                        ? 'bg-primary-foreground/20 text-primary-foreground' 
-                        : 'bg-muted text-muted-foreground'
+                      levelStyling.skills
                     )}
                   >
                     {skill}
@@ -193,9 +241,7 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
                 {skills.length > 3 && (
                   <span className={cn(
                     'px-2 py-0.5 rounded text-xs',
-                    isRoot 
-                      ? 'bg-primary-foreground/20 text-primary-foreground' 
-                      : 'bg-muted text-muted-foreground'
+                    levelStyling.skills
                   )}>
                     +{skills.length - 3}
                   </span>
@@ -205,13 +251,13 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
           )}
         </div>
 
-        {/* Expand Indicator */}
+        {/* Progression Indicator */}
         {hasChildren && (
-          <div className="flex justify-center mt-2">
-            <ChevronDown className={cn(
-              'h-4 w-4',
-              isRoot ? 'text-primary-foreground/60' : 'text-muted-foreground'
-            )} />
+          <div className="flex justify-center mt-3">
+            <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+              <span>Continue to</span>
+              <ArrowRight className="h-3 w-3" />
+            </div>
           </div>
         )}
       </div>
@@ -231,6 +277,11 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
       {/* New Node Pulse Effect */}
       {isNew && (
         <div className="absolute inset-0 rounded-xl bg-primary/20 animate-ping" />
+      )}
+
+      {/* Progression Line Indicator */}
+      {!isRoot && (
+        <div className="absolute -left-2 top-1/2 w-4 h-0.5 bg-muted-foreground/30 transform -translate-y-1/2" />
       )}
     </div>
 
