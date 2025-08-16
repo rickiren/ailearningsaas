@@ -19,7 +19,6 @@ export interface Database {
           title: string
           created_at: string
           updated_at: string
-          user_id?: string
           metadata?: any
         }
         Insert: {
@@ -27,7 +26,6 @@ export interface Database {
           title: string
           created_at?: string
           updated_at?: string
-          user_id?: string
           metadata?: any
         }
         Update: {
@@ -35,7 +33,6 @@ export interface Database {
           title?: string
           created_at?: string
           updated_at?: string
-          user_id?: string
           metadata?: any
         }
       }
@@ -68,6 +65,88 @@ export interface Database {
           artifact_data?: any
         }
       }
+      projects: {
+        Row: {
+          id: string
+          title: string
+          description?: string
+          created_at: string
+          updated_at: string
+          metadata?: any
+        }
+        Insert: {
+          id?: string
+          title: string
+          description?: string
+          created_at?: string
+          updated_at?: string
+          metadata?: any
+        }
+        Update: {
+          id?: string
+          title?: string
+          description?: string
+          created_at?: string
+          updated_at?: string
+          metadata?: any
+        }
+      }
+      skill_atoms: {
+        Row: {
+          id: string
+          project_id: string
+          parent_id?: string
+          title: string
+          description?: string
+          level: number
+          order_index: number
+          difficulty?: 'beginner' | 'intermediate' | 'advanced'
+          estimated_hours?: number
+          prerequisites?: string[]
+          skills?: string[]
+          position_x?: number
+          position_y?: number
+          node_data?: any
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          parent_id?: string
+          title: string
+          description?: string
+          level?: number
+          order_index?: number
+          difficulty?: 'beginner' | 'intermediate' | 'advanced'
+          estimated_hours?: number
+          prerequisites?: string[]
+          skills?: string[]
+          position_x?: number
+          position_y?: number
+          node_data?: any
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          parent_id?: string
+          title?: string
+          description?: string
+          level?: number
+          order_index?: number
+          difficulty?: 'beginner' | 'intermediate' | 'advanced'
+          estimated_hours?: number
+          prerequisites?: string[]
+          skills?: string[]
+          position_x?: number
+          position_y?: number
+          node_data?: any
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
   }
 }
@@ -76,3 +155,7 @@ export type Conversation = Database['public']['Tables']['conversations']['Row']
 export type Message = Database['public']['Tables']['messages']['Row']
 export type ConversationInsert = Database['public']['Tables']['conversations']['Insert']
 export type MessageInsert = Database['public']['Tables']['messages']['Insert']
+export type Project = Database['public']['Tables']['projects']['Row']
+export type ProjectInsert = Database['public']['Tables']['projects']['Insert']
+export type SkillAtom = Database['public']['Tables']['skill_atoms']['Row']
+export type SkillAtomInsert = Database['public']['Tables']['skill_atoms']['Insert']

@@ -84,15 +84,23 @@ export interface Artifact {
   createdAt: Date;
   updatedAt: Date;
   isStreaming?: boolean;
+  metadata?: {
+    projectId?: string;
+    skillAtomIds?: string[];
+    [key: string]: any;
+  };
 }
 
 export interface ArtifactState {
   currentArtifact: Artifact | null;
   artifacts: Artifact[];
   streamingData: any;
-  addArtifact: (artifact: Omit<Artifact, 'id' | 'createdAt' | 'updatedAt'>) => string;
+  addArtifact: (artifact: Omit<Artifact, 'id' | 'createdAt' | 'updatedAt'>) => Promise<string>;
   updateArtifact: (id: string, data: Partial<Artifact>) => void;
   setCurrentArtifact: (id: string | null) => void;
   updateStreamingData: (data: any) => void;
   clearStreamingData: () => void;
+  loadMindmapFromDatabase: (projectId: string) => Promise<string | null>;
+  getSavedMindmaps: () => Promise<any[]>;
+  cleanupDuplicates: () => Promise<number>;
 }

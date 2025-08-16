@@ -6,7 +6,7 @@ import { SkillAtomBuilder } from './skill-atom-builder';
 import { DrillPreview } from './drill-preview';
 import { WelcomeScreen } from './welcome-screen';
 import { ProgressViewer } from './progress-viewer';
-import { FileText, Map, Target, Play, BarChart3, Download, Share, Settings } from 'lucide-react';
+import { FileText, Map, Target, Play, BarChart3, Download, Share, Settings, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -27,7 +27,14 @@ const ARTIFACT_TITLES = {
 };
 
 export function ArtifactViewer() {
-  const { currentArtifact, artifacts } = useArtifactStore();
+  const { currentArtifact, artifacts, cleanupDuplicates } = useArtifactStore();
+  
+  console.log('🎨 ArtifactViewer render:', {
+    hasCurrentArtifact: !!currentArtifact,
+    currentArtifactType: currentArtifact?.type,
+    currentArtifactTitle: currentArtifact?.title,
+    totalArtifacts: artifacts.length
+  });
 
   const handleExport = () => {
     if (!currentArtifact) return;
@@ -60,6 +67,20 @@ export function ArtifactViewer() {
       }
     } else {
       navigator.clipboard.writeText(window.location.href);
+    }
+  };
+
+  const handleCleanup = async () => {
+    try {
+      const cleanedCount = await cleanupDuplicates();
+      if (cleanedCount > 0) {
+        alert(`Cleanup complete! Removed ${cleanedCount} duplicate artifacts.`);
+      } else {
+        alert('No duplicates found. Your artifacts are already clean!');
+      }
+    } catch (error) {
+      console.error('Cleanup failed:', error);
+      alert('Cleanup failed. Please check the console for details.');
     }
   };
 
@@ -119,19 +140,27 @@ export function ArtifactViewer() {
           </div>
 
           {/* Action Buttons */}
-          {currentArtifact && (
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handleShare}>
-                <Share className="h-4 w-4" />
+          <div className="flex items-center gap-2">
+            {artifacts.length > 1 && (
+              <Button variant="outline" size="sm" onClick={handleCleanup}>
+                <Trash2 className="h-4 w-4" />
+                Cleanup Duplicates
               </Button>
-              <Button variant="outline" size="sm" onClick={handleExport}>
-                <Download className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" size="sm">
-                <Settings className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
+            )}
+            {currentArtifact && (
+              <>
+                <Button variant="outline" size="sm" onClick={handleShare}>
+                  <Share className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleExport}>
+                  <Download className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="sm">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Artifact Tabs */}

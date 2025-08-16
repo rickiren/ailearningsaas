@@ -80,9 +80,21 @@ export function JsonCodeBlock({ data, title, isStreaming = false }: JsonCodeBloc
       {/* Content */}
       {!isCollapsed && (
         <div className="p-3">
-          <pre className="text-xs overflow-x-auto bg-background p-3 rounded border">
-            <code>{JSON.stringify(data, null, 2)}</code>
-          </pre>
+          <div className="bg-background rounded border overflow-hidden">
+            <div className="max-h-96 overflow-y-auto">
+              <pre className="text-xs p-3">
+                <code>{JSON.stringify(data, null, 2)}</code>
+              </pre>
+            </div>
+            {isStreaming && (
+              <div className="border-t bg-muted/20 p-2 text-center">
+                <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                  <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+                  <span>Generating complete structure...</span>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

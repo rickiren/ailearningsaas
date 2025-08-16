@@ -9,7 +9,7 @@ import { ChatInput } from './chat-input';
 import { useChatStore } from '@/lib/chat-store';
 import { useArtifactStore } from '@/lib/artifact-store';
 import { ConversationList } from './conversation-list';
-import { JsonCodeBlock } from './json-code-block';
+import { JsonCodeBlock } from '../chat/json-code-block';
 
 const EXAMPLE_PROMPTS = [
   "I want to create a learning path for JavaScript programming",
@@ -32,7 +32,7 @@ export function ChatInterface() {
     createNewConversation
   } = useChatStore();
   
-  const { addArtifact, updateArtifact } = useArtifactStore();
+  const { addArtifact, updateArtifact, setCurrentArtifact } = useArtifactStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -42,6 +42,17 @@ export function ChatInterface() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Handle artifact creation when streaming JSON is detected
+  useEffect(() => {
+    if (streamingJson && streamingJson.type === 'mindmap') {
+      console.log('🎯 Chat interface detected streaming mindmap:', streamingJson);
+      
+      // Don't create artifacts here - let the chat input handle it
+      // This prevents duplication since the chat input already creates artifacts
+      // during the streaming process
+    }
+  }, [streamingJson]);
 
   const handleExampleClick = async (prompt: string) => {
     if (isLoading) return;
@@ -123,7 +134,7 @@ export function ChatInterface() {
               if (parsed.artifact) {
                 if (!currentArtifactId) {
                   // Create new artifact
-                  currentArtifactId = addArtifact({
+                  currentArtifactId = await addArtifact({
                     type: parsed.artifact.type,
                     title: parsed.artifact.title,
                     data: parsed.artifact.data,

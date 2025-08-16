@@ -3,6 +3,7 @@ import { Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useChatStore } from '@/lib/chat-store';
+import { useArtifactStore } from '@/lib/artifact-store';
 
 export function ChatInput() {
   const [input, setInput] = useState('');
@@ -15,6 +16,8 @@ export function ChatInput() {
     finishStreamingMessage,
     currentConversationId
   } = useChatStore();
+
+  const { addArtifact, setCurrentArtifact, updateArtifact } = useArtifactStore();
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
@@ -54,7 +57,7 @@ export function ChatInput() {
         throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
       }
 
-      // Handle streaming response
+      // Handle streaming response with timeout
       const reader = response.body?.getReader();
       if (!reader) {
         throw new Error('No response body');
@@ -62,8 +65,18 @@ export function ChatInput() {
 
       const decoder = new TextDecoder();
       let accumulatedContent = '';
+      let lastUpdateTime = Date.now();
+      const updateInterval = 100; // Update UI every 100ms for better performance
+      const startTime = Date.now();
+      const maxWaitTime = 120000; // 2 minutes max wait time
+      let currentArtifactId = null; // Track the current artifact being created
 
       while (true) {
+        // Check for timeout
+        if (Date.now() - startTime > maxWaitTime) {
+          throw new Error('Response timeout - the AI is taking too long to respond. Please try again with a simpler request.');
+        }
+
         const { done, value } = await reader.read();
         
         if (done) break;
@@ -77,6 +90,10 @@ export function ChatInput() {
             
             if (data === '[DONE]') {
               finishStreamingMessage(assistantMessageId);
+              if (currentArtifactId) {
+                // Mark the artifact as complete
+                updateArtifact(currentArtifactId, { isStreaming: false });
+              }
               return;
             }
 
@@ -89,8 +106,41 @@ export function ChatInput() {
               
               if (parsed.content) {
                 accumulatedContent += parsed.content;
-                // Pass the accumulated content so our mindmap detection can find complete JSON blocks
-                updateStreamingMessage(assistantMessageId, accumulatedContent);
+                
+                // Only update UI periodically for better performance with long responses
+                const now = Date.now();
+                if (now - lastUpdateTime >= updateInterval) {
+                  updateStreamingMessage(assistantMessageId, accumulatedContent);
+                  lastUpdateTime = now;
+                }
+              }
+
+              // Handle artifact data
+              if (parsed.artifact) {
+                console.log('🎯 Chat input received artifact:', parsed.artifact);
+                
+                if (currentArtifactId) {
+                  // Update existing artifact
+                  console.log('🔄 Updating existing artifact:', currentArtifactId);
+                  updateArtifact(currentArtifactId, {
+                    data: parsed.artifact.data,
+                    isStreaming: true,
+                  });
+                } else {
+                  // Create new artifact only once
+                  console.log('🆕 Creating new artifact');
+                  addArtifact({
+                    type: parsed.artifact.type,
+                    title: parsed.artifact.title,
+                    data: parsed.artifact.data,
+                    isStreaming: true,
+                  }).then((artifactId) => {
+                    console.log('✅ Created artifact in chat input:', artifactId);
+                    currentArtifactId = artifactId;
+                    // Set as current artifact to display in left panel
+                    setCurrentArtifact(artifactId);
+                  });
+                }
               }
             } catch (parseError) {
               // Skip malformed JSON lines
@@ -100,6 +150,12 @@ export function ChatInput() {
         }
       }
 
+      // Final update with complete content
+      updateStreamingMessage(assistantMessageId, accumulatedContent);
+      
+      // No need to create artifacts here since we're already handling them in the streaming loop
+      // This prevents duplication
+      
       finishStreamingMessage(assistantMessageId);
 
     } catch (error) {
@@ -127,7 +183,7 @@ export function ChatInput() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyPress={handleKeyPress}
-          placeholder="Ask me about creating learning paths..."
+          placeholder={isLoading ? "AI is generating your learning path..." : "Ask me about creating learning paths..."}
           disabled={isLoading}
           className="flex-1"
         />
@@ -135,10 +191,20 @@ export function ChatInput() {
           onClick={sendMessage} 
           disabled={!input.trim() || isLoading}
           size="icon"
+          className={isLoading ? "animate-pulse" : ""}
         >
-          <Send className="h-4 w-4" />
+          {isLoading ? (
+            <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <Send className="h-4 w-4" />
+          )}
         </Button>
       </div>
+      {isLoading && (
+        <div className="text-center text-sm text-muted-foreground mt-2">
+          Generating your learning path... This may take a moment for complex structures.
+        </div>
+      )}
     </div>
   );
 }

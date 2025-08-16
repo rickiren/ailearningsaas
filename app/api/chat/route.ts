@@ -66,6 +66,15 @@ Listen for phrases like:
 - "Generate the mindmap"
 - "I'm ready to see the curriculum"
 
+IMPORTANT JSON GENERATION GUIDELINES:
+- Always generate complete, valid JSON structures
+- If the JSON is complex or long, ensure you have enough tokens to complete it
+- Do not truncate or cut off mid-generation
+- If you encounter token limits, generate a simplified but complete structure
+- Test your JSON syntax before sending - it must be parseable
+- If JSON generation fails, retry with a simpler structure
+- Prioritize completeness over complexity - a simple complete structure is better than a complex incomplete one
+
 When generating JSON, include a brief introduction like:
 "Based on our conversation, here's your personalized learning path for teaching [skill]. This incorporates the [specific student needs/timeline/goals we discussed]:"
 
@@ -104,6 +113,18 @@ Then provide the JSON mindmap wrapped in \`\`\`json code blocks with this exact 
  }
 }
 
+IMPORTANT: The JSON must have this exact structure with "type": "mindmap" and the mindmap data in the "data" field. Do not include any other fields or modify the structure.
+
+CRITICAL JSON REQUIREMENTS:
+- No trailing commas after the last element in objects or arrays
+- All strings must be properly quoted with double quotes
+- No unescaped special characters in strings
+- Ensure all brackets and braces are properly closed
+- Test your JSON syntax before sending it
+- IMPORTANT: Always complete the entire JSON structure - do not truncate or cut off mid-generation
+- If the JSON is long, ensure you have enough tokens to complete it fully
+- The JSON must be syntactically valid and parseable
+
 RESPONSE STYLE:
 - Be conversational, helpful, and genuinely curious about their teaching goals
 - Ask follow-up questions to dig deeper into their course vision
@@ -119,6 +140,61 @@ AI: "Based on what you've shared about targeting beginners who want to start par
 [Generate JSON mindmap]
 
 Remember: You're a curriculum consultant who creates both conversational guidance AND structured learning paths. After understanding their teaching goals and student needs (usually within 2-4 exchanges), proactively create a structured curriculum mindmap. This is a key part of your service - don't wait for them to explicitly ask. The mindmap helps them visualize and implement the curriculum you've discussed. Always include both conversational guidance AND a structured mindmap when you have enough information.`;
+
+// Helper function to check if JSON has balanced braces
+function isBalancedJSON(str: string): boolean {
+  let braceCount = 0;
+  let bracketCount = 0;
+  let inString = false;
+  let escapeNext = false;
+  
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+    
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    
+    if (char === '\\') {
+      escapeNext = true;
+      continue;
+    }
+    
+    if (char === '"' && !escapeNext) {
+      inString = !inString;
+      continue;
+    }
+    
+    if (!inString) {
+      if (char === '{') braceCount++;
+      if (char === '}') braceCount--;
+      if (char === '[') bracketCount++;
+      if (char === ']') bracketCount--;
+      
+      // If we have negative counts, braces are unbalanced
+      if (braceCount < 0 || bracketCount < 0) return false;
+    }
+  }
+  
+  // For streaming, allow slightly unbalanced JSON (within 2 characters)
+  // This helps catch JSON that's almost complete
+  return Math.abs(braceCount) <= 2 && Math.abs(bracketCount) <= 2;
+}
+
+// Helper function to check if a string looks like it could be valid JSON
+function looksLikeJSON(str: string): boolean {
+  // Check if it starts with { and has some basic JSON structure
+  const trimmed = str.trim();
+  if (!trimmed.startsWith('{')) return false;
+  
+  // Check if it has some key JSON elements
+  const hasQuotes = /"[^"]*"\s*:/.test(str);
+  const hasBraces = /[{}]/.test(str);
+  const hasBrackets = /[\[\]]/.test(str);
+  
+  return hasQuotes && hasBraces;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -185,7 +261,7 @@ export async function POST(request: NextRequest) {
 
           const stream = await anthropic.messages.create({
             model: 'claude-3-5-sonnet-20241022',
-            max_tokens: 1000,
+            max_tokens: 4000,
             system: SYSTEM_PROMPT,
             messages,
             stream: true,
@@ -201,24 +277,259 @@ export async function POST(request: NextRequest) {
               const data = JSON.stringify({ content: chunk.delta.text });
               controller.enqueue(new TextEncoder().encode(`data: ${data}\n\n`));
               
-              // Check if we have a complete JSON artifact
-              const jsonMatches = fullMessage.match(/```json\s*(\{[\s\S]*?\})\s*```/g);
+              // Check if we have a complete JSON artifact (multiple formats)
+              // Only process JSON when we have complete, properly closed objects
+              let jsonMatches = null;
+              
+              // First, check if we have a complete JSON block with proper closing
+              if (fullMessage.includes('```json') && fullMessage.includes('```')) {
+                const jsonBlockMatch = fullMessage.match(/```json\s*([\s\S]*?)\s*```/);
+                if (jsonBlockMatch) {
+                  const jsonContent = jsonBlockMatch[1];
+                  // Check if the JSON content has balanced braces
+                  if (isBalancedJSON(jsonContent)) {
+                    jsonMatches = [jsonBlockMatch[0]];
+                  }
+                }
+              }
+              
+              // If no complete JSON block, try without json tag
+              if (!jsonMatches && fullMessage.includes('```')) {
+                const codeBlockMatch = fullMessage.match(/```\s*([\s\S]*?)\s*```/);
+                if (codeBlockMatch) {
+                  const blockContent = codeBlockMatch[1];
+                  // Check if it looks like JSON and has balanced braces
+                  if (blockContent.includes('"id"') && blockContent.includes('"title"') && isBalancedJSON(blockContent)) {
+                    jsonMatches = [codeBlockMatch[0]];
+                  }
+                }
+              }
+              
+              // If still no matches, look for raw JSON in the message
+              if (!jsonMatches && looksLikeJSON(fullMessage)) {
+                // Try to extract JSON from the end of the message
+                const jsonStart = fullMessage.lastIndexOf('{');
+                if (jsonStart !== -1) {
+                  const potentialJson = fullMessage.substring(jsonStart);
+                  if (isBalancedJSON(potentialJson) && potentialJson.includes('"id"') && potentialJson.includes('"title"')) {
+                    jsonMatches = [potentialJson];
+                  }
+                }
+              }
               if (jsonMatches) {
+                let jsonStr = '';
+                let cleanedJsonStr = '';
+                
                 try {
                   const lastMatch = jsonMatches[jsonMatches.length - 1];
-                  const jsonStr = lastMatch.replace(/```json\s*/, '').replace(/\s*```$/, '');
-                  const artifactData = JSON.parse(jsonStr);
+                  jsonStr = lastMatch.replace(/```json\s*/, '').replace(/\s*```$/, '');
+                  
+                  console.log('🔍 Raw JSON string detected:', jsonStr.substring(0, 200) + '...');
+                  
+                  // Try to fix common JSON issues before parsing
+                  let cleanedJsonStr = jsonStr
+                    .replace(/,\s*}/g, '}')  // Remove trailing commas in objects
+                    .replace(/,\s*]/g, ']')  // Remove trailing commas in arrays
+                    .replace(/,\s*,/g, ',')  // Remove double commas
+                    .replace(/\n\s*/g, ' ') // Remove newlines and extra spaces
+                    .replace(/\r/g, '')     // Remove carriage returns
+                    .replace(/,\s*([}\]])/g, '$1')  // Remove trailing commas before closing brackets
+                    .replace(/([{\[])\s*,/g, '$1')  // Remove leading commas after opening brackets
+                    .replace(/,\s*$/g, '')  // Remove trailing comma at end
+                    .replace(/^\s*,/g, '')  // Remove leading comma at start
+                    .trim();
+                  
+                  // Try to fix common incomplete JSON issues
+                  if (!cleanedJsonStr.endsWith('}') && !cleanedJsonStr.endsWith(']')) {
+                    // Count braces and brackets to see what's missing
+                    const openBraces = (cleanedJsonStr.match(/\{/g) || []).length;
+                    let closeBraces = (cleanedJsonStr.match(/\}/g) || []).length;
+                    const openBrackets = (cleanedJsonStr.match(/\[/g) || []).length;
+                    let closeBrackets = (cleanedJsonStr.match(/\]/g) || []).length;
+                    
+                    // Add missing closing braces/brackets
+                    while (closeBrackets < openBrackets) {
+                      cleanedJsonStr += ']';
+                      closeBrackets++;
+                    }
+                    while (closeBraces < openBraces) {
+                      cleanedJsonStr += '}';
+                      closeBraces++;
+                    }
+                  }
+                  
+                  console.log('🧹 Cleaned JSON string:', cleanedJsonStr.substring(0, 200) + '...');
+                  
+                  const artifactData = JSON.parse(cleanedJsonStr);
+                  
+                  // Handle different JSON formats
+                  let processedArtifactData = artifactData;
+                  
+                  // If the JSON is in the old format (direct mindmap data), wrap it properly
+                  if (!artifactData.type && !artifactData.data && artifactData.id && artifactData.title) {
+                    console.log('🔄 Converting old format JSON to new format');
+                    processedArtifactData = {
+                      type: 'mindmap',
+                      title: artifactData.title,
+                      data: artifactData
+                    };
+                  } else if (artifactData.type === 'mindmap' && !artifactData.data && artifactData.id) {
+                    // If it has type but no data field, wrap the content in data
+                    console.log('🔄 Wrapping mindmap content in data field');
+                    processedArtifactData = {
+                      type: 'mindmap',
+                      title: artifactData.title,
+                      data: {
+                        id: artifactData.id,
+                        title: artifactData.title,
+                        description: artifactData.description,
+                        level: artifactData.level,
+                        difficulty: artifactData.difficulty,
+                        estimatedHours: artifactData.estimatedHours,
+                        skills: artifactData.skills,
+                        children: artifactData.children
+                      }
+                    };
+                  } else {
+                    // Add type and title if not present
+                    if (!artifactData.type) {
+                      processedArtifactData.type = 'mindmap';
+                    }
+                    if (!artifactData.title && artifactData.data?.title) {
+                      processedArtifactData.title = artifactData.data.title;
+                    }
+                  }
+                  
+                  console.log('🎯 Detected JSON artifact:', processedArtifactData);
                   
                   // Send artifact data
-                  const artifactDataMsg = JSON.stringify({ artifact: artifactData });
+                  const artifactDataMsg = JSON.stringify({ artifact: processedArtifactData });
                   controller.enqueue(new TextEncoder().encode(`data: ${artifactDataMsg}\n\n`));
                 } catch (e) {
+                  console.error('❌ Failed to parse JSON artifact:', e);
+                  console.error('🔍 Problematic JSON string:', jsonStr);
+                  console.error('🧹 Cleaned JSON string:', cleanedJsonStr);
+                  console.error('📍 Error position:', e instanceof Error ? e.message : 'Unknown error');
+                  
+                  // Try to extract just the basic structure for debugging
+                  try {
+                    const basicMatch = jsonStr.match(/\{[^{}]*"id"[^{}]*"title"[^{}]*\}/);
+                    if (basicMatch) {
+                      console.log('🔍 Found basic structure:', basicMatch[0]);
+                    }
+                  } catch (debugError) {
+                    console.error('🔍 Debug extraction failed:', debugError);
+                  }
+                  
+                  // Try to send a partial artifact if we have some valid structure
+                  try {
+                    const partialData = {
+                      type: 'mindmap',
+                      title: 'Partial Learning Path',
+                      data: {
+                        id: 'partial',
+                        title: 'Learning Path (Partial)',
+                        description: 'This is a partial response - the complete structure is still being generated',
+                        children: [],
+                        error: 'JSON parsing failed - structure may be incomplete'
+                      }
+                    };
+                    
+                    const partialArtifactMsg = JSON.stringify({ artifact: partialData });
+                    controller.enqueue(new TextEncoder().encode(`data: ${partialArtifactMsg}\n\n`));
+                  } catch (partialError) {
+                    console.error('❌ Failed to send partial artifact:', partialError);
+                  }
+                  
                   // Invalid JSON, continue streaming
                 }
               }
             }
             
             if (chunk.type === 'message_stop') {
+              // Now that streaming is complete, try to process any JSON that might be in the full message
+              console.log('🏁 Streaming complete, processing final message for JSON artifacts');
+              
+              // Check for complete JSON in the full message
+              let finalJsonMatches = null;
+              
+              if (fullMessage.includes('```json') && fullMessage.includes('```')) {
+                const jsonBlockMatch = fullMessage.match(/```json\s*([\s\S]*?)\s*```/);
+                if (jsonBlockMatch) {
+                  const jsonContent = jsonBlockMatch[1];
+                  if (isBalancedJSON(jsonContent)) {
+                    finalJsonMatches = [jsonBlockMatch[0]];
+                    console.log('🎯 Found complete JSON artifact in final message');
+                  }
+                }
+              }
+              
+              // If no complete JSON block, try without json tag
+              if (!finalJsonMatches && fullMessage.includes('```')) {
+                const codeBlockMatch = fullMessage.match(/```\s*([\s\S]*?)\s*```/);
+                if (codeBlockMatch) {
+                  const blockContent = codeBlockMatch[1];
+                  if (blockContent.includes('"id"') && blockContent.includes('"title"') && isBalancedJSON(blockContent)) {
+                    finalJsonMatches = [codeBlockMatch[0]];
+                    console.log('🎯 Found complete JSON artifact in code block');
+                  }
+                }
+              }
+              
+              // If still no matches, try to extract raw JSON from the end
+              if (!finalJsonMatches && looksLikeJSON(fullMessage)) {
+                const jsonStart = fullMessage.lastIndexOf('{');
+                if (jsonStart !== -1) {
+                  const potentialJson = fullMessage.substring(jsonStart);
+                  if (isBalancedJSON(potentialJson) && potentialJson.includes('"id"') && potentialJson.includes('"title"')) {
+                    finalJsonMatches = [potentialJson];
+                    console.log('🎯 Found raw JSON artifact in final message');
+                  }
+                }
+              }
+              
+              // If we found complete JSON, process it now
+              if (finalJsonMatches) {
+                try {
+                  const lastMatch = finalJsonMatches[finalJsonMatches.length - 1];
+                  const jsonStr = lastMatch.replace(/```json\s*/, '').replace(/\s*```$/, '');
+                  
+                  console.log('🔍 Processing final JSON artifact:', jsonStr.substring(0, 200) + '...');
+                  
+                  // Clean and parse the JSON
+                  let cleanedJsonStr = jsonStr
+                    .replace(/,\s*}/g, '}')
+                    .replace(/,\s*]/g, ']')
+                    .replace(/,\s*,/g, ',')
+                    .replace(/\n\s*/g, ' ')
+                    .replace(/\r/g, '')
+                    .replace(/,\s*([}\]])/g, '$1')
+                    .replace(/([{\[])\s*,/g, '$1')
+                    .trim();
+                  
+                  const artifactData = JSON.parse(cleanedJsonStr);
+                  
+                  // Process the artifact data
+                  let processedArtifactData = artifactData;
+                  if (!artifactData.type && !artifactData.data && artifactData.id && artifactData.title) {
+                    processedArtifactData = {
+                      type: 'mindmap',
+                      title: artifactData.title,
+                      data: artifactData
+                    };
+                  }
+                  
+                  console.log('✅ Final JSON artifact processed:', processedArtifactData);
+                  
+                  // Send the final artifact data
+                  const artifactDataMsg = JSON.stringify({ artifact: processedArtifactData });
+                  controller.enqueue(new TextEncoder().encode(`data: ${artifactDataMsg}\n\n`));
+                  
+                } catch (e) {
+                  console.error('❌ Failed to process final JSON artifact:', e);
+                }
+              }
+              
               // Save AI response to database
               try {
                 await ConversationStore.addMessage({
