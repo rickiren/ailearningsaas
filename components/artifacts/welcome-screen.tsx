@@ -1,7 +1,10 @@
 'use client';
 
-import { Map, Target, Play, BarChart3, Zap, BookOpen, Users } from 'lucide-react';
+import { Map, Target, Play, BarChart3, Zap, BookOpen, Users, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useState, useEffect } from 'react';
+import { MindmapStore } from '@/lib/mindmap-store';
+import { useArtifactStore } from '@/lib/artifact-store';
 
 const FEATURES = [
   {
@@ -50,6 +53,50 @@ const EXAMPLES = [
 ];
 
 export function WelcomeScreen() {
+  const [savedMindmaps, setSavedMindmaps] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const { addArtifact, setCurrentArtifact } = useArtifactStore();
+
+  // Load saved mindmaps on component mount
+  useEffect(() => {
+    loadSavedMindmaps();
+  }, []);
+
+  const loadSavedMindmaps = async () => {
+    setIsLoading(true);
+    try {
+      const projects = await MindmapStore.getUserMindmaps();
+      setSavedMindmaps(projects);
+    } catch (error) {
+      console.error('Failed to load saved mindmaps:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLoadMindmap = async (project: any) => {
+    try {
+      const mindmapData = await MindmapStore.loadMindmap(project.id);
+      
+      if (mindmapData) {
+        // Create a new artifact with the loaded data
+        const artifactId = await addArtifact({
+          type: 'mindmap',
+          title: project.title,
+          data: mindmapData,
+          metadata: { projectId: project.id }
+        });
+        
+        if (artifactId) {
+          setCurrentArtifact(artifactId);
+          console.log('✅ Loaded saved mindmap:', project.id);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load saved mindmap:', error);
+    }
+  };
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-4xl mx-auto px-6 py-12">
@@ -77,6 +124,52 @@ export function WelcomeScreen() {
             </Button>
           </div>
         </div>
+
+        {/* Saved Mindmaps Section */}
+        {savedMindmaps.length > 0 && (
+          <div className="mb-12">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-semibold flex items-center gap-2">
+                <Clock className="h-6 w-6 text-primary" />
+                Your Saved Learning Paths
+              </h2>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadSavedMindmaps}
+                disabled={isLoading}
+              >
+                {isLoading ? 'Loading...' : 'Refresh'}
+              </Button>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              {savedMindmaps.map((project) => (
+                <div
+                  key={project.id}
+                  className="border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer bg-background"
+                  onClick={() => handleLoadMindmap(project)}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex items-center justify-center w-10 h-10 bg-primary/10 rounded-lg shrink-0">
+                      <Map className="h-5 w-5 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold mb-1 truncate">{project.title}</h3>
+                      {project.description && (
+                        <p className="text-sm text-muted-foreground mb-2 line-clamp-2">{project.description}</p>
+                      )}
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <span>{project.metadata?.totalNodes || 0} topics</span>
+                        <span>{project.metadata?.estimatedTotalHours || 0} hours</span>
+                        <span>{new Date(project.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Features Grid */}
         <div className="mb-12">

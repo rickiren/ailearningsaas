@@ -6,9 +6,11 @@ import { SkillAtomBuilder } from './skill-atom-builder';
 import { DrillPreview } from './drill-preview';
 import { WelcomeScreen } from './welcome-screen';
 import { ProgressViewer } from './progress-viewer';
-import { FileText, Map, Target, Play, BarChart3, Download, Share, Settings, Trash2 } from 'lucide-react';
+import { FileText, Map, Target, Play, BarChart3, Download, Share, Settings, Trash2, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useState, useEffect } from 'react';
+import { MindmapStore } from '@/lib/mindmap-store';
 
 const ARTIFACT_ICONS = {
   mindmap: Map,
@@ -27,7 +29,10 @@ const ARTIFACT_TITLES = {
 };
 
 export function ArtifactViewer() {
-  const { currentArtifact, artifacts, cleanupDuplicates } = useArtifactStore();
+  const { currentArtifact, artifacts, cleanupDuplicates, addArtifact, setCurrentArtifact } = useArtifactStore();
+  const [savedMindmaps, setSavedMindmaps] = useState<any[]>([]);
+  const [showSavedMindmaps, setShowSavedMindmaps] = useState(false);
+  const [isLoadingSaved, setIsLoadingSaved] = useState(false);
   
   console.log('🎨 ArtifactViewer render:', {
     hasCurrentArtifact: !!currentArtifact,
@@ -35,6 +40,44 @@ export function ArtifactViewer() {
     currentArtifactTitle: currentArtifact?.title,
     totalArtifacts: artifacts.length
   });
+
+  // Load saved mindmaps
+  const loadSavedMindmaps = async () => {
+    setIsLoadingSaved(true);
+    try {
+      const projects = await MindmapStore.getUserMindmaps();
+      setSavedMindmaps(projects);
+    } catch (error) {
+      console.error('Failed to load saved mindmaps:', error);
+    } finally {
+      setIsLoadingSaved(false);
+    }
+  };
+
+  // Handle loading a saved mindmap
+  const handleLoadSavedMindmap = async (project: any) => {
+    try {
+      const mindmapData = await MindmapStore.loadMindmap(project.id);
+      
+      if (mindmapData) {
+        // Create a new artifact with the loaded data
+        const artifactId = await addArtifact({
+          type: 'mindmap',
+          title: project.title,
+          data: mindmapData,
+          metadata: { projectId: project.id }
+        });
+        
+        if (artifactId) {
+          setCurrentArtifact(artifactId);
+          setShowSavedMindmaps(false);
+          console.log('✅ Loaded saved mindmap:', project.id);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load saved mindmap:', error);
+    }
+  };
 
   const handleExport = () => {
     if (!currentArtifact) return;
@@ -141,6 +184,22 @@ export function ArtifactViewer() {
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (showSavedMindmaps) {
+                  setShowSavedMindmaps(false);
+                } else {
+                  loadSavedMindmaps();
+                  setShowSavedMindmaps(true);
+                }
+              }}
+              className="gap-2"
+            >
+              <Clock className="h-4 w-4" />
+              {showSavedMindmaps ? 'Hide Saved' : 'View Saved'}
+            </Button>
             {artifacts.length > 1 && (
               <Button variant="outline" size="sm" onClick={handleCleanup}>
                 <Trash2 className="h-4 w-4" />
@@ -162,6 +221,45 @@ export function ArtifactViewer() {
             )}
           </div>
         </div>
+
+        {/* Saved Mindmaps Dropdown */}
+        {showSavedMindmaps && (
+          <div className="mt-4 p-3 bg-muted/20 border rounded-lg">
+            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+              <Clock className="h-4 w-4" />
+              Saved Learning Paths
+            </h3>
+            {isLoadingSaved ? (
+              <div className="text-center py-4">
+                <div className="w-6 h-6 border border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                <span className="text-sm text-muted-foreground">Loading saved mindmaps...</span>
+              </div>
+            ) : savedMindmaps.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">No saved mindmaps found.</p>
+            ) : (
+              <div className="grid sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto">
+                {savedMindmaps.map((project) => (
+                  <div
+                    key={project.id}
+                    className="flex items-center justify-between p-3 bg-background rounded border hover:bg-muted/50 cursor-pointer"
+                    onClick={() => handleLoadSavedMindmap(project)}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-medium truncate">{project.title}</h4>
+                      {project.description && (
+                        <p className="text-xs text-muted-foreground truncate">{project.description}</p>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground ml-2 text-right">
+                      <div>{project.metadata?.totalNodes || 0} topics</div>
+                      <div>{project.metadata?.estimatedTotalHours || 0} hours</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Artifact Tabs */}
         {artifacts.length > 1 && (

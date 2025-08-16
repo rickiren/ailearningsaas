@@ -103,4 +103,5 @@ export interface ArtifactState {
   loadMindmapFromDatabase: (projectId: string) => Promise<string | null>;
   getSavedMindmaps: () => Promise<any[]>;
   cleanupDuplicates: () => Promise<number>;
+  addModuleToMindmap: (parentId: string | null, newModule: any) => Promise<boolean>;
 }

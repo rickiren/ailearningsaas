@@ -168,7 +168,14 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
     // If updating a mindmap and it has a project ID, update the database
     const artifact = get().artifacts.find(a => a.id === id);
     if (artifact?.type === 'mindmap' && artifact.metadata?.projectId && updates.data) {
-      MindmapStore.updateMindmap(artifact.metadata.projectId, updates.data)
+      console.log('🔄 Updating mindmap in database:', artifact.metadata.projectId);
+      
+      // Check if this is a major update (adding/removing modules) or just editing existing ones
+      const currentData = artifact.data;
+      const newData = updates.data;
+      
+      // For now, use the full update method. In the future, we could implement more granular updates
+      MindmapStore.updateMindmap(artifact.metadata.projectId, newData)
         .then(() => console.log('✅ Mindmap updated in database'))
         .catch(error => console.error('❌ Failed to update mindmap in database:', error));
     }
@@ -301,6 +308,60 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
     } catch (error) {
       console.error('❌ Error during cleanup:', error);
       return 0;
+    }
+  },
+
+  // Add a new module to the current mindmap
+  addModuleToMindmap: async (parentId: string | null, newModule: any) => {
+    try {
+      const { currentArtifact } = get();
+      if (!currentArtifact || currentArtifact.type !== 'mindmap') {
+        throw new Error('No mindmap artifact currently active');
+      }
+
+      if (!currentArtifact.metadata?.projectId) {
+        throw new Error('Current mindmap not saved to database');
+      }
+
+      console.log('🔄 Adding new module to mindmap:', {
+        projectId: currentArtifact.metadata.projectId,
+        parentId,
+        moduleTitle: newModule.title
+      });
+
+      // Add to local state first
+      const updatedData = { ...currentArtifact.data };
+      if (parentId) {
+        // Add as child of specific parent
+        const addToParent = (node: any): any => {
+          if (node.id === parentId) {
+            return {
+              ...node,
+              children: [...(node.children || []), newModule]
+            };
+          }
+          if (node.children) {
+            return {
+              ...node,
+              children: node.children.map(addToParent)
+            };
+          }
+          return node;
+        };
+        updatedData.children = updatedData.children?.map(addToParent) || [];
+      } else {
+        // Add as root level module
+        updatedData.children = [...(updatedData.children || []), newModule];
+      }
+
+      // Update local state
+      get().updateArtifact(currentArtifact.id, { data: updatedData });
+
+      console.log('✅ Module added to mindmap successfully');
+      return true;
+    } catch (error) {
+      console.error('❌ Error adding module to mindmap:', error);
+      return false;
     }
   },
 }));

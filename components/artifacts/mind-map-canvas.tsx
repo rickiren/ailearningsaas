@@ -18,9 +18,10 @@ import {
 import 'reactflow/dist/style.css';
 
 import { MindMapNode } from '@/types/artifacts';
-import { Target, ArrowRight } from 'lucide-react';
+import { Target, ArrowRight, Plus } from 'lucide-react';
 import { MindMapNodeComponent } from './mind-map-node';
 import { cn } from '@/lib/utils';
+import { useArtifactStore } from '@/lib/artifact-store';
 
 // Custom background component for learning path structure
 const LearningPathBackground = ({ totalModules }: { totalModules: number }) => {
@@ -83,6 +84,7 @@ export function MindMapCanvas({ data, isStreaming }: MindMapCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [isLayoutCalculated, setIsLayoutCalculated] = useState(false);
+  const { currentArtifact, updateArtifact, addModuleToMindmap } = useArtifactStore();
 
   // Calculate total modules and lessons for layout planning
   const getTotalModules = useCallback((node: MindMapNode): number => {
@@ -251,6 +253,82 @@ export function MindMapCanvas({ data, isStreaming }: MindMapCanvasProps) {
     [setEdges]
   );
 
+  // Handle module editing events
+  const handleModuleUpdated = useCallback((event: CustomEvent) => {
+    const { moduleId, updatedModule } = event.detail;
+    
+    // Update the mindmap data
+    const updateNodeInTree = (node: MindMapNode): MindMapNode => {
+      if (node.id === moduleId) {
+        return { ...node, ...updatedModule };
+      }
+      if (node.children) {
+        return {
+          ...node,
+          children: node.children.map(updateNodeInTree)
+        };
+      }
+      return node;
+    };
+
+    const updatedData = updateNodeInTree(data);
+    
+    // Update the artifact store
+    if (currentArtifact) {
+      updateArtifact(currentArtifact.id, { data: updatedData });
+    }
+  }, [data, currentArtifact, updateArtifact]);
+
+  const handleModuleDeleted = useCallback((event: CustomEvent) => {
+    const { moduleId } = event.detail;
+    
+    // Remove the module from the mindmap data
+    const removeNodeFromTree = (node: MindMapNode): MindMapNode | null => {
+      if (node.children) {
+        const filteredChildren = node.children
+          .map(removeNodeFromTree)
+          .filter((child): child is MindMapNode => child !== null);
+        
+        if (filteredChildren.length !== node.children.length) {
+          return { ...node, children: filteredChildren };
+        }
+      }
+      
+      if (node.id === moduleId) {
+        return null; // Remove this node
+      }
+      
+      return node;
+    };
+
+    const updatedData = removeNodeFromTree(data);
+    if (updatedData) {
+      // Update the artifact store
+      if (currentArtifact) {
+        updateArtifact(currentArtifact.id, { data: updatedData });
+      }
+    }
+  }, [data, currentArtifact, updateArtifact]);
+
+  const handleModuleAddChild = useCallback(async (event: CustomEvent) => {
+    const { parentId } = event.detail;
+    
+    const newChild: MindMapNode = {
+      id: crypto.randomUUID(),
+      title: 'New Lesson',
+      description: 'Add a description for this lesson',
+      level: 2, // Lessons are level 2
+      difficulty: 'beginner',
+      estimatedHours: 1,
+      skills: [],
+      prerequisites: [],
+      children: []
+    };
+    
+    // Use the new method to add the child module
+    await addModuleToMindmap(parentId, newChild);
+  }, [addModuleToMindmap]);
+
   // Fit view when layout is calculated
   useEffect(() => {
     if (isLayoutCalculated && nodes.length > 0) {
@@ -261,6 +339,23 @@ export function MindMapCanvas({ data, isStreaming }: MindMapCanvasProps) {
       }, 100);
     }
   }, [isLayoutCalculated, nodes.length]);
+
+  // Set up event listeners for module editing
+  useEffect(() => {
+    const handleModuleUpdatedEvent = (event: Event) => handleModuleUpdated(event as CustomEvent);
+    const handleModuleDeletedEvent = (event: Event) => handleModuleDeleted(event as CustomEvent);
+    const handleModuleAddChildEvent = (event: Event) => handleModuleAddChild(event as CustomEvent);
+
+    window.addEventListener('module-updated', handleModuleUpdatedEvent);
+    window.addEventListener('module-deleted', handleModuleDeletedEvent);
+    window.addEventListener('module-add-child', handleModuleAddChildEvent);
+
+    return () => {
+      window.removeEventListener('module-updated', handleModuleUpdatedEvent);
+      window.removeEventListener('module-deleted', handleModuleDeletedEvent);
+      window.removeEventListener('module-add-child', handleModuleAddChildEvent);
+    };
+  }, [handleModuleUpdated, handleModuleDeleted, handleModuleAddChild]);
 
   const miniMapNodeColor = (node: Node) => {
     const difficulty = node.data.difficulty;
@@ -405,6 +500,32 @@ export function MindMapCanvas({ data, isStreaming }: MindMapCanvasProps) {
             <span className="text-sm font-medium">Building mind map...</span>
           </div>
         </div>
+      )}
+
+      {/* Add Module Button */}
+      {!isStreaming && data && (
+        <button
+          onClick={async () => {
+            const newModule: MindMapNode = {
+              id: crypto.randomUUID(),
+              title: 'New Module',
+              description: 'Add a description for this module',
+              level: 1,
+              difficulty: 'beginner',
+              estimatedHours: 2,
+              skills: [],
+              prerequisites: [],
+              children: []
+            };
+            
+            // Use the new method to add the module
+            await addModuleToMindmap(null, newModule);
+          }}
+          className="absolute bottom-6 left-6 bg-primary text-primary-foreground p-3 rounded-full shadow-lg hover:bg-primary/90 transition-colors"
+          title="Add New Module"
+        >
+          <Plus className="h-6 w-6" />
+        </button>
       )}
     </div>
   );

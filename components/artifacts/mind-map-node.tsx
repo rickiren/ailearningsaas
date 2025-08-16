@@ -2,10 +2,11 @@
 
 import { memo, useState, useRef } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
-import { Clock, Target, BookOpen, ChevronDown, ChevronRight, ArrowRight, Play } from 'lucide-react';
+import { Clock, Target, BookOpen, ChevronDown, ChevronRight, ArrowRight, Play, Edit3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MindMapNode } from '@/types/artifacts';
 import { NodeTooltip } from './node-tooltip';
+import { ModuleEditor } from './module-editor';
 
 interface MindMapNodeData extends MindMapNode {
   isRoot: boolean;
@@ -42,6 +43,7 @@ const DIFFICULTY_COLORS = {
 export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, selected }) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+  const [showEditor, setShowEditor] = useState(false);
   const nodeRef = useRef<HTMLDivElement>(null);
 
   const handleMouseEnter = (e: React.MouseEvent) => {
@@ -57,6 +59,42 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
 
   const handleMouseLeave = () => {
     setShowTooltip(false);
+  };
+
+  const handleNodeClick = () => {
+    setShowEditor(true);
+  };
+
+  const handleSaveModule = (updatedModule: MindMapNode) => {
+    // Update the node data
+    Object.assign(data, updatedModule);
+    setShowEditor(false);
+    
+    // Dispatch a custom event to notify parent components
+    const event = new CustomEvent('module-updated', {
+      detail: { moduleId: data.id, updatedModule }
+    });
+    window.dispatchEvent(event);
+  };
+
+  const handleDeleteModule = (moduleId: string) => {
+    if (confirm('Are you sure you want to delete this module? This action cannot be undone.')) {
+      // Dispatch a custom event to notify parent components
+      const event = new CustomEvent('module-deleted', {
+        detail: { moduleId }
+      });
+      window.dispatchEvent(event);
+      setShowEditor(false);
+    }
+  };
+
+  const handleAddChild = (parentId: string) => {
+    // Dispatch a custom event to notify parent components
+    const event = new CustomEvent('module-add-child', {
+      detail: { parentId }
+    });
+    window.dispatchEvent(event);
+    setShowEditor(false);
   };
 
   const {
@@ -144,6 +182,7 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
         ref={nodeRef}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        onClick={handleNodeClick}
         className={cn(
           'relative rounded-xl border-2 shadow-lg transition-all duration-300 hover:shadow-xl cursor-pointer',
           getNodeSize(),
@@ -175,6 +214,13 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
                 {getProgressionText()}
               </div>
               {getProgressionIcon()}
+            </div>
+            
+            {/* Edit Button */}
+            <div className="absolute top-2 right-2 opacity-0 hover:opacity-100 transition-opacity">
+              <div className="bg-background/80 backdrop-blur-sm rounded-full p-1.5 shadow-sm border">
+                <Edit3 className="h-3 w-3 text-muted-foreground" />
+              </div>
             </div>
             
             <h3 className={cn('font-semibold leading-tight', fontSizes.title)}>
@@ -290,6 +336,17 @@ export const MindMapNodeComponent = memo<NodeProps<MindMapNodeData>>(({ data, se
       node={data}
       position={tooltipPosition}
       visible={showTooltip}
+    />
+
+    {/* Module Editor */}
+    <ModuleEditor
+      module={data}
+      isOpen={showEditor}
+      onClose={() => setShowEditor(false)}
+      onSave={handleSaveModule}
+      onDelete={handleDeleteModule}
+      onAddChild={handleAddChild}
+      isRoot={isRoot}
     />
   </>
   );

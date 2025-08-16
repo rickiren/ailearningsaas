@@ -328,6 +328,12 @@ export class MindmapStore {
     mindmapData: MindMapNode
   ): Promise<void> {
     try {
+      console.log('🔄 Updating mindmap in database:', {
+        projectId,
+        totalNodes: this.countNodes(mindmapData),
+        estimatedTotalHours: this.calculateTotalHours(mindmapData)
+      });
+      
       // For now, we'll delete and recreate the entire mindmap
       // In a production app, you might want to implement more sophisticated diffing
       
@@ -365,8 +371,10 @@ export class MindmapStore {
         })
         .eq('id', projectId);
 
+      console.log('✅ Mindmap updated successfully in database');
+
     } catch (error) {
-      console.error('Error updating mindmap:', error);
+      console.error('❌ Error updating mindmap:', error);
       throw error;
     }
   }
@@ -393,6 +401,62 @@ export class MindmapStore {
   }
 
   /**
+   * Add a new module to an existing mindmap
+   */
+  static async addModuleToMindmap(
+    projectId: string,
+    parentId: string | null,
+    newModule: MindMapNode
+  ): Promise<string> {
+    try {
+      console.log('🔄 Adding new module to mindmap:', {
+        projectId,
+        parentId,
+        moduleTitle: newModule.title
+      });
+
+      // Save the new module
+      const skillAtomIds: string[] = [];
+      await this.saveSkillAtomRecursive(newModule, projectId, parentId, 0, 0, skillAtomIds);
+
+      console.log('✅ New module added successfully');
+      return skillAtomIds[0] || '';
+    } catch (error) {
+      console.error('❌ Error adding module to mindmap:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a specific module from a mindmap
+   */
+  static async deleteModuleFromMindmap(
+    projectId: string,
+    moduleId: string
+  ): Promise<void> {
+    try {
+      console.log('🔄 Deleting module from mindmap:', {
+        projectId,
+        moduleId
+      });
+
+      // Delete the specific skill atom
+      const { error: deleteError } = await supabase
+        .from('skill_atoms')
+        .delete()
+        .eq('id', moduleId)
+        .eq('project_id', projectId);
+
+      if (deleteError) throw deleteError;
+
+      console.log('✅ Module deleted successfully');
+    } catch (error) {
+      console.error('❌ Error deleting module from mindmap:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Delete a mindmap and all its skill atoms
    */
   static async deleteMindmap(projectId: string): Promise<void> {
@@ -413,7 +477,7 @@ export class MindmapStore {
 
       if (projectError) throw projectError;
     } catch (error) {
-      console.error('Error deleting mindmap:', error);
+      console.error('❌ Error deleting mindmap:', error);
       throw error;
     }
   }

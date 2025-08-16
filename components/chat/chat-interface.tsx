@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Trash2, Map } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChatMessage } from './chat-message';
 import { ChatInput } from './chat-input';
@@ -10,6 +10,7 @@ import { useChatStore } from '@/lib/chat-store';
 import { useArtifactStore } from '@/lib/artifact-store';
 import { ConversationList } from './conversation-list';
 import { JsonCodeBlock } from '../chat/json-code-block';
+import { MindmapStore } from '@/lib/mindmap-store';
 
 const EXAMPLE_PROMPTS = [
   "I want to create a learning path for JavaScript programming",
@@ -34,6 +35,8 @@ export function ChatInterface() {
   
   const { addArtifact, updateArtifact, setCurrentArtifact } = useArtifactStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [savedMindmaps, setSavedMindmaps] = useState<any[]>([]);
+  const [showSavedMindmaps, setShowSavedMindmaps] = useState(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -42,6 +45,16 @@ export function ChatInterface() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Load saved mindmaps from database
+  const loadSavedMindmaps = async () => {
+    try {
+      const projects = await MindmapStore.getUserMindmaps();
+      setSavedMindmaps(projects);
+    } catch (error) {
+      console.error('Failed to load saved mindmaps:', error);
+    }
+  };
 
   // Handle artifact creation when streaming JSON is detected
   useEffect(() => {
@@ -53,6 +66,31 @@ export function ChatInterface() {
       // during the streaming process
     }
   }, [streamingJson]);
+
+  // Handle loading a saved mindmap
+  const handleLoadSavedMindmap = async (project: any) => {
+    try {
+      const mindmapData = await MindmapStore.loadMindmap(project.id);
+      
+      if (mindmapData) {
+        // Create a new artifact with the loaded data
+        const artifactId = await addArtifact({
+          type: 'mindmap',
+          title: project.title,
+          data: mindmapData,
+          metadata: { projectId: project.id }
+        });
+        
+        if (artifactId) {
+          setCurrentArtifact(artifactId);
+          setShowSavedMindmaps(false);
+          console.log('✅ Loaded saved mindmap:', project.id);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load saved mindmap:', error);
+    }
+  };
 
   const handleExampleClick = async (prompt: string) => {
     if (isLoading) return;
@@ -184,18 +222,66 @@ export function ChatInterface() {
                 Get help creating comprehensive learning paths for any skill
               </p>
             </div>
-            {messages.length > 0 && (
+            <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={clearMessages}
+                onClick={() => {
+                  if (showSavedMindmaps) {
+                    setShowSavedMindmaps(false);
+                  } else {
+                    loadSavedMindmaps();
+                    setShowSavedMindmaps(true);
+                  }
+                }}
                 className="gap-2"
               >
-                <Trash2 className="h-4 w-4" />
-                Clear Chat
+                <Map className="h-4 w-4" />
+                {showSavedMindmaps ? 'Hide Saved' : 'View Saved Mindmaps'}
               </Button>
-            )}
+              {messages.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearMessages}
+                  className="gap-2"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Clear Chat
+                </Button>
+              )}
+            </div>
           </div>
+
+          {/* Saved Mindmaps Dropdown */}
+          {showSavedMindmaps && (
+            <div className="mt-3 p-3 bg-muted/20 border rounded-lg">
+              <h3 className="text-sm font-semibold mb-2">Saved Learning Paths</h3>
+              {savedMindmaps.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No saved mindmaps found.</p>
+              ) : (
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {savedMindmaps.map((project) => (
+                    <div
+                      key={project.id}
+                      className="flex items-center justify-between p-2 bg-background rounded border hover:bg-muted/50 cursor-pointer"
+                      onClick={() => handleLoadSavedMindmap(project)}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-sm font-medium truncate">{project.title}</h4>
+                        {project.description && (
+                          <p className="text-xs text-muted-foreground truncate">{project.description}</p>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground ml-2">
+                        {project.metadata?.totalNodes || 0} topics
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </header>
 
       {/* Messages */}
