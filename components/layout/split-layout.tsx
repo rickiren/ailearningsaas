@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, MessageCircle, FileText } from 'lucide-react
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useArtifactStore } from '@/lib/artifact-store';
+import { useAIEditingFeedback, AIEditingFeedback } from '@/components/artifacts/ai-editing-feedback';
 
 interface SplitLayoutProps {
   leftPanel: React.ReactNode;
@@ -18,6 +19,7 @@ export function SplitLayout({ leftPanel, rightPanel, className }: SplitLayoutPro
   const [isMobileTabMode, setIsMobileTabMode] = useState(false);
   const [activeTab, setActiveTab] = useState<'artifact' | 'chat'>('artifact');
   const { currentArtifact } = useArtifactStore();
+  const { feedbacks, removeFeedback } = useAIEditingFeedback();
 
   const toggleCollapse = () => {
     setIsCollapsed(!isCollapsed);
@@ -25,6 +27,17 @@ export function SplitLayout({ leftPanel, rightPanel, className }: SplitLayoutPro
 
   return (
     <div className={cn('h-screen bg-background', className)}>
+      {/* AI Editing Feedback */}
+      {feedbacks.map((feedback) => (
+        <AIEditingFeedback
+          key={feedback.id}
+          message={feedback.message}
+          type={feedback.type}
+          duration={feedback.duration}
+          onClose={() => removeFeedback(feedback.id)}
+        />
+      ))}
+      
       {/* Mobile/Tablet View */}
       <div className="lg:hidden h-full">
         <div className="flex h-full flex-col">

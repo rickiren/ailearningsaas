@@ -9,6 +9,9 @@ A Next.js application for managing AI-generated learning paths with a normalized
 - **Minimal UI**: Clean tree interface for managing learning paths
 - **Zod Validation**: Type-safe API inputs and outputs
 - **JSON Patch Support**: Efficient updates using RFC6902 patches
+- **AI-Powered Editing**: Natural language commands for real-time mindmap editing
+- **Unified Editing System**: Manual controls and AI commands use the same underlying functions
+- **Real-time Updates**: Instant visual feedback and state synchronization
 
 ## Tech Stack
 
@@ -55,6 +58,39 @@ npm run dev
 ```bash
 npx tsx scripts/seed-ingest.ts
 ```
+
+## AI-Powered Editing
+
+The application now supports AI-powered editing through natural language commands. Users can edit their learning paths using simple text prompts in the chat interface.
+
+### Example Commands
+
+```bash
+# Change module titles
+change the title of "JavaScript Basics" to "JavaScript Fundamentals"
+
+# Modify difficulty levels
+set the difficulty of "React Components" to intermediate
+
+# Add new skills
+add the skill "ES6 Syntax" to "JavaScript Basics"
+
+# Create new modules
+add a new module called "State Management"
+
+# Course-level changes
+change the course title to "Complete Web Development Bootcamp"
+```
+
+### How It Works
+
+1. **Natural Language Processing**: Commands are parsed using pattern matching
+2. **Function Mapping**: AI maps requests to specific editing functions
+3. **Real-time Updates**: Changes are applied immediately to the mindmap
+4. **Visual Feedback**: Success/failure messages are displayed
+5. **Database Sync**: Changes are automatically saved
+
+For a complete guide, see [AI_EDITING_GUIDE.md](./AI_EDITING_GUIDE.md).
 
 ## API Endpoints
 

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useChatStore } from '@/lib/chat-store';
 import { useArtifactStore } from '@/lib/artifact-store';
+import { parseAndExecuteAICommand } from '@/lib/ai-prompt-parser';
 
 export function ChatInput() {
   const [input, setInput] = useState('');
@@ -31,6 +32,12 @@ export function ChatInput() {
       content: userMessage,
       role: 'user',
     });
+
+    // Check if this is an editing command first
+    if (isEditingCommand(userMessage)) {
+      await handleEditingCommand(userMessage);
+      return;
+    }
 
     setLoading(true);
 
@@ -166,6 +173,51 @@ export function ChatInput() {
       // Update the assistant message with error
       updateStreamingMessage(assistantMessageId, `Sorry, I encountered an error: ${errorMessage}`);
       finishStreamingMessage(assistantMessageId);
+    }
+  };
+
+  // Check if the message is an editing command
+  const isEditingCommand = (message: string): boolean => {
+    const editingKeywords = [
+      'change', 'edit', 'update', 'modify', 'add', 'remove', 'delete', 'drop',
+      'duplicate', 'copy', 'clone', 'move', 'relocate', 'merge', 'combine',
+      'set', 'include', 'exclude'
+    ];
+    
+    return editingKeywords.some(keyword => 
+      message.toLowerCase().includes(keyword.toLowerCase())
+    );
+  };
+
+  // Handle editing commands using AI tools
+  const handleEditingCommand = async (message: string) => {
+    try {
+      // Add assistant message for editing feedback
+      const assistantMessageId = addMessage({
+        content: `Processing your editing request: "${message}"...`,
+        role: 'assistant',
+      });
+
+      // Parse and execute the command
+      const result = await parseAndExecuteAICommand(message);
+      
+      // Update the assistant message with the result
+      if (result.success) {
+        updateStreamingMessage(assistantMessageId, `✅ ${result.message}`);
+        finishStreamingMessage(assistantMessageId);
+      } else {
+        updateStreamingMessage(assistantMessageId, `❌ ${result.message}`);
+        finishStreamingMessage(assistantMessageId);
+      }
+      
+    } catch (error) {
+      console.error('Error handling editing command:', error);
+      
+      // Add error message
+      addMessage({
+        content: `Sorry, I encountered an error while processing your editing request: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        role: 'assistant',
+      });
     }
   };
 

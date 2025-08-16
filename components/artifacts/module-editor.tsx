@@ -5,6 +5,7 @@ import { X, Save, Trash2, Plus, BookOpen, Clock, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { MindMapNode } from '@/types/artifacts';
+import { aiEditingTools } from '@/lib/ai-editing-tools';
 
 interface ModuleEditorProps {
   module: MindMapNode;
@@ -72,9 +73,73 @@ export function ModuleEditor({
     handleInputChange('prerequisites', updatedPrerequisites);
   };
 
-  const handleSave = () => {
-    onSave(formData);
-    setIsDirty(false);
+  const handleSave = async () => {
+    try {
+      // Use AI editing tools for consistency
+      if (isRoot) {
+        // Course-level updates
+        await aiEditingTools.editCourseInfo(formData);
+      } else {
+        // Module-level updates
+        if (formData.title !== module.title) {
+          await aiEditingTools.editModuleTitle(module.id, formData.title);
+        }
+        if (formData.description !== module.description) {
+          await aiEditingTools.editModuleDescription(module.id, formData.description || '');
+        }
+        if (formData.difficulty !== module.difficulty) {
+          await aiEditingTools.editModuleDifficulty(module.id, formData.difficulty || 'beginner');
+        }
+        if (formData.estimatedHours !== module.estimatedHours) {
+          await aiEditingTools.editModuleHours(module.id, formData.estimatedHours || 0);
+        }
+        if (JSON.stringify(formData.skills) !== JSON.stringify(module.skills)) {
+          // Handle skills changes
+          const oldSkills = module.skills || [];
+          const newSkills = formData.skills || [];
+          
+          // Remove skills that are no longer present
+          for (const skill of oldSkills) {
+            if (!newSkills.includes(skill)) {
+              await aiEditingTools.removeSkillFromModule(module.id, skill);
+            }
+          }
+          
+          // Add new skills
+          for (const skill of newSkills) {
+            if (!oldSkills.includes(skill)) {
+              await aiEditingTools.addSkillToModule(module.id, skill);
+            }
+          }
+        }
+        if (JSON.stringify(formData.prerequisites) !== JSON.stringify(module.prerequisites)) {
+          // Handle prerequisites changes
+          const oldPrerequisites = module.prerequisites || [];
+          const newPrerequisites = formData.prerequisites || [];
+          
+          // Remove prerequisites that are no longer present
+          for (const prereq of oldPrerequisites) {
+            if (!newPrerequisites.includes(prereq)) {
+              await aiEditingTools.removePrerequisiteFromModule(module.id, prereq);
+            }
+          }
+          
+          // Add new prerequisites
+          for (const prereq of newPrerequisites) {
+            if (!oldPrerequisites.includes(prereq)) {
+              await aiEditingTools.addPrerequisiteToModule(module.id, prereq);
+            }
+          }
+        }
+      }
+      
+      // Also call the original onSave for backward compatibility
+      onSave(formData);
+      setIsDirty(false);
+    } catch (error) {
+      console.error('Error saving module:', error);
+      alert('Failed to save changes. Please try again.');
+    }
   };
 
   const handleClose = () => {
@@ -278,7 +343,15 @@ export function ModuleEditor({
               {!isRoot && (
                 <Button 
                   variant="destructive" 
-                  onClick={() => onDelete(module.id)}
+                  onClick={async () => {
+                    try {
+                      await aiEditingTools.deleteModule(module.id);
+                      onDelete(module.id);
+                    } catch (error) {
+                      console.error('Error deleting module:', error);
+                      alert('Failed to delete module. Please try again.');
+                    }
+                  }}
                   className="gap-2"
                 >
                   <Trash2 className="h-4 w-4" />
