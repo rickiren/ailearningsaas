@@ -11,6 +11,7 @@ import { DrillChatSidebar } from './drill-chat-sidebar';
 import { ArtifactRenderer } from './artifact-renderer';
 import { DrillType } from '@/types/drills';
 import { useDrillStore } from '@/lib/drill-store';
+import { Drill } from '@/types/drills';
 
 export function DrillsPage() {
   const { currentDrill, setCurrentDrill, loadDrills, isLoading } = useDrillStore();
@@ -42,7 +43,27 @@ export function DrillsPage() {
 
   const renderCenterPanel = () => {
     if (currentDrill) {
-      return <DrillPreview drill={currentDrill} />;
+      return (
+        <DrillPreview 
+          drill={currentDrill} 
+          onDrillUpdate={(updatedDrill: Drill) => {
+            // Only update if the drill actually changed to prevent infinite loops
+            if (currentDrill?.id !== updatedDrill.id || currentDrill?.code !== updatedDrill.code) {
+              setCurrentDrill(updatedDrill);
+              // Update the drill in the store
+              useDrillStore.getState().updateDrill(updatedDrill.id, { code: updatedDrill.code });
+            }
+          }}
+          onCodeUpdate={(newCode: string) => {
+            // Handle real-time code updates without triggering infinite loops
+            if (currentDrill && currentDrill.code !== newCode) {
+              const updatedDrill = { ...currentDrill, code: newCode };
+              setCurrentDrill(updatedDrill);
+              useDrillStore.getState().updateDrill(currentDrill.id, { code: newCode });
+            }
+          }}
+        />
+      );
     }
 
     if (currentArtifact) {
@@ -81,11 +102,6 @@ export function DrillsPage() {
                       difficulty: 'beginner',
                       estimatedTime: 15,
                       code: currentArtifact.code,
-                      metadata: {
-                        projectId: undefined,
-                        skillAtomIds: [],
-                        tags: ['ai-generated', currentArtifact.language],
-                      },
                     });
                     
                     // Get the newly created drill and set it as current
@@ -210,7 +226,7 @@ export function DrillsPage() {
             <div className="h-full bg-muted/10">
               <DrillChatSidebar
                 selectedDrill={currentDrill}
-                onDrillUpdate={(drill) => {
+                onDrillUpdate={(drill: Drill | null) => {
                   setCurrentDrill(drill);
                   setCurrentArtifact(null);
                 }}

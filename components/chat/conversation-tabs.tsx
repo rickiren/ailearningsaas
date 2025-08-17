@@ -31,12 +31,12 @@ export function ConversationTabs() {
 
   if (conversations.length === 0) {
     return (
-      <div className="flex items-center gap-2 px-4 py-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="flex items-center gap-2 px-6 py-3 border-b border-slate-200 bg-white/95 backdrop-blur-xl supports-[backdrop-filter]:bg-white/80">
         <Button
           variant="outline"
           size="sm"
           onClick={handleNewConversation}
-          className="h-8 px-3 gap-2"
+          className="h-9 px-4 gap-2 border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 transition-all duration-200 rounded-lg"
         >
           <Plus className="h-4 w-4" />
           New Chat
@@ -46,15 +46,15 @@ export function ConversationTabs() {
   }
 
   return (
-    <div className="flex items-center gap-1 px-4 py-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 overflow-x-auto">
+    <div className="flex items-center gap-1 px-6 py-3 border-b border-slate-200 bg-white/95 backdrop-blur-xl supports-[backdrop-filter]:bg-white/80 overflow-x-auto">
       {conversations.map((conversation) => (
         <div
           key={conversation.id}
           className={cn(
-            "group flex items-center gap-2 px-3 py-2 rounded-t-lg border border-b-0 cursor-pointer transition-all duration-200 min-w-0",
+            "group flex items-center gap-2 px-4 py-2.5 rounded-t-xl border border-b-0 cursor-pointer transition-all duration-200 min-w-0",
             currentConversationId === conversation.id
-              ? "bg-background border-border text-foreground"
-              : "bg-muted/50 border-transparent text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+              ? "bg-white border-slate-200 text-slate-900 shadow-sm"
+              : "bg-slate-50/50 border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-800 hover:border-slate-200"
           )}
           onClick={() => loadConversation(conversation.id)}
         >
@@ -68,12 +68,12 @@ export function ConversationTabs() {
             variant="ghost"
             size="sm"
             className={cn(
-              "opacity-0 group-hover:opacity-100 transition-opacity h-5 w-5 p-0 rounded-sm hover:bg-destructive/10 hover:text-destructive",
+              "opacity-0 group-hover:opacity-100 transition-all duration-200 h-6 w-6 p-0 rounded-md hover:bg-red-50 hover:text-red-600",
               currentConversationId === conversation.id && "opacity-100"
             )}
             onClick={(e) => handleDeleteConversation(e, conversation.id)}
           >
-            <X className="h-3 w-3" />
+            <X className="h-3.5 w-3.5" />
           </Button>
         </div>
       ))}
@@ -82,7 +82,7 @@ export function ConversationTabs() {
         variant="outline"
         size="sm"
         onClick={handleNewConversation}
-        className="h-8 px-3 gap-2 ml-2 shrink-0"
+        className="h-9 px-4 gap-2 ml-2 shrink-0 border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 transition-all duration-200 rounded-lg"
       >
         <Plus className="h-4 w-4" />
         New

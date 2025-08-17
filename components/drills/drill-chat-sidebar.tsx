@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Code, Target, Zap, MessageSquare, History } from 'lucide-react';
+import { useState, useRef, useEffect, KeyboardEvent } from 'react';
+import { Send, Sparkles, Code, Target, Zap, MessageSquare, History, Plus, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Drill, DrillChatMessage } from '@/types/drills';
 import { cn } from '@/lib/utils';
 import { useDrillStore } from '@/lib/drill-store';
@@ -27,19 +26,29 @@ const quickSuggestions = [
   { label: 'JavaScript Functions', icon: Code, prompt: 'Create a JavaScript function practice drill' },
 ];
 
-export function DrillChatSidebar({ selectedDrill, onDrillUpdate, onArtifactUpdate }: DrillChatSidebarProps) {
+// Quick suggestions for drill editing
+const editingSuggestions = [
+  { label: 'Add Validation', icon: Target, prompt: 'Add form validation to this drill' },
+  { label: 'Improve Styling', icon: Zap, prompt: 'Enhance the visual design and styling' },
+  { label: 'Add Interactivity', icon: Code, prompt: 'Make this drill more interactive' },
+  { label: 'Fix Issues', icon: Target, prompt: 'Identify and fix any problems in the code' },
+];
+
+// Client-side wrapper component to prevent hydration issues
+function DrillChatSidebarClient({ selectedDrill, onDrillUpdate, onArtifactUpdate }: DrillChatSidebarProps) {
   const [inputValue, setInputValue] = useState('');
+  const [inputHeight, setInputHeight] = useState(48); // Default height for h-12
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [currentArtifact, setCurrentArtifact] = useState<{
     language: 'html' | 'jsx' | 'javascript';
     code: string;
     timestamp: number;
   } | null>(null);
   const [showConversationHistory, setShowConversationHistory] = useState(false);
-  const [isClient, setIsClient] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState<DrillChatMessage | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  const { addDrill } = useDrillStore();
+  const { addDrill, handleArtifactCommand } = useDrillStore();
   const {
     messages,
     currentConversationId,
@@ -56,9 +65,26 @@ export function DrillChatSidebar({ selectedDrill, onDrillUpdate, onArtifactUpdat
     setLoading,
   } = useDrillChatStore();
 
+  // Auto-resize textarea based on content
+  const adjustTextareaHeight = () => {
+    if (textareaRef.current) {
+      const textarea = textareaRef.current;
+      textarea.style.height = 'auto';
+      const newHeight = Math.min(Math.max(textarea.scrollHeight, 48), 200); // Min 48px, max 200px
+      setInputHeight(newHeight);
+      textarea.style.height = `${newHeight}px`;
+    }
+  };
+
+  // Adjust height when input changes
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [inputValue]);
+
   // Ensure component only renders on client side
   useEffect(() => {
-    setIsClient(true);
+    // This useEffect is no longer needed as hydration is handled by Next.js
+    // and the component will only render on the client side.
   }, []);
 
   const scrollToBottom = () => {
@@ -108,14 +134,66 @@ export function DrillChatSidebar({ selectedDrill, onDrillUpdate, onArtifactUpdat
       }
     };
 
-    if (isClient) {
-      initializeConversation();
-    }
+    // Initialize conversation immediately since we're in a client component
+    initializeConversation();
 
     return () => {
       mounted = false;
     };
-  }, [isClient, selectedDrill?.id]);
+  }, [selectedDrill?.id, loadConversations, loadConversation, createNewConversation]);
+
+  // NEW: Enhanced AI response processing helper
+  const processAIArtifactResponse = async (parsed: any, selectedDrill: Drill | null) => {
+    if (parsed.type === 'artifact' && selectedDrill) {
+      try {
+        // Determine the command type based on AI response context
+        let command: 'create' | 'update' | 'rewrite' = 'update';
+        
+        // You could enhance this logic based on your AI prompts
+        if (parsed.code !== selectedDrill.code) {
+          command = 'rewrite';
+        }
+        
+        // Directly update drill content using the store
+        await handleArtifactCommand(selectedDrill.id, command, parsed.code);
+        
+        // Set current artifact for display
+        setCurrentArtifact({
+          language: parsed.language,
+          code: parsed.code,
+          timestamp: parsed.timestamp,
+        });
+        
+        // Notify parent components
+        if (onDrillUpdate) {
+          const updatedDrill = {
+            ...selectedDrill,
+            code: parsed.code,
+            metadata: {
+              ...selectedDrill.metadata,
+              updatedAt: new Date(),
+              version: (selectedDrill.metadata.version || 1) + 1,
+            },
+          };
+          onDrillUpdate(updatedDrill);
+        }
+        
+        if (onArtifactUpdate) {
+          onArtifactUpdate({
+            language: parsed.language,
+            code: parsed.code,
+            timestamp: parsed.timestamp,
+          });
+        }
+        
+        return true; // Successfully processed
+      } catch (error) {
+        console.error('Failed to process AI artifact response:', error);
+        return false;
+      }
+    }
+    return false;
+  };
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
@@ -135,6 +213,7 @@ export function DrillChatSidebar({ selectedDrill, onDrillUpdate, onArtifactUpdat
       });
 
       setInputValue('');
+      setInputHeight(48); // Reset height
 
       // Create a temporary streaming message
       const tempMessage: DrillChatMessage = {
@@ -155,6 +234,8 @@ export function DrillChatSidebar({ selectedDrill, onDrillUpdate, onArtifactUpdat
           message: userMessageContent,
           conversation_id: currentConversationId,
           drillId: selectedDrill?.id,
+          currentCode: selectedDrill?.code,
+          language: selectedDrill?.type,
         }),
       });
 
@@ -184,17 +265,10 @@ export function DrillChatSidebar({ selectedDrill, onDrillUpdate, onArtifactUpdat
               const parsed = JSON.parse(data);
               
               if (parsed.type === 'artifact') {
-                // Handle artifact data
-                const artifact = {
-                  language: parsed.language,
-                  code: parsed.code,
-                  timestamp: parsed.timestamp,
-                };
-                setCurrentArtifact(artifact);
-                
-                // Notify parent component about the artifact
-                if (onArtifactUpdate) {
-                  onArtifactUpdate(artifact);
+                // NEW: Use enhanced AI response processing
+                const processed = await processAIArtifactResponse(parsed, selectedDrill);
+                if (!processed) {
+                  console.error('Failed to process artifact response');
                 }
               } else if (parsed.content) {
                 // Handle text content
@@ -317,68 +391,71 @@ export function DrillChatSidebar({ selectedDrill, onDrillUpdate, onArtifactUpdat
     setShowConversationHistory(false);
   };
 
-  // Don't render until client-side hydration is complete
-  if (!isClient) {
-    return (
-      <div className="h-full flex flex-col bg-background">
-        <div className="p-4 border-b bg-muted/5">
-          <div className="flex items-center space-x-2 mb-2">
-            <Sparkles className="h-5 w-5 text-primary" />
-            <h3 className="font-semibold">Drill Creation Assistant</h3>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Loading...
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const handleKeyPress = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+    // Shift+Enter will naturally create a new line in the textarea
+  };
 
   // Add default welcome message if no messages exist
   const displayMessages = messages.length === 0 ? [
     {
       id: 'welcome',
       role: 'assistant' as const,
-      content: "Hello! I'm your drill creation assistant. I can help you create interactive learning exercises, practice tools, and simulations. What type of drill would you like to create today?",
+      content: selectedDrill 
+        ? `Hello! I'm your drill editing assistant. I can help you modify and improve your "${selectedDrill.title}" drill. What changes would you like to make? I can update the code, add new features, fix issues, or enhance the learning experience.`
+        : "Hello! I'm your drill creation assistant. I can help you create interactive learning exercises, practice tools, and simulations. What type of drill would you like to create today?",
       timestamp: new Date(),
     }
   ] : messages;
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className="h-full flex flex-col bg-white border-l border-slate-200">
       {/* Header */}
-      <div className="p-4 border-b bg-muted/5">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center space-x-2">
-            <Sparkles className="h-5 w-5 text-primary" />
-            <h3 className="font-semibold">Drill Creation Assistant</h3>
+      <div className="p-6 border-b border-slate-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
+              <Sparkles className="h-5 w-5 text-white" />
+            </div>
+            <h3 className="font-bold text-slate-900">Drill Creation Assistant</h3>
           </div>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setShowConversationHistory(!showConversationHistory)}
-            className="h-8 w-8 p-0"
+            className="h-9 w-9 p-0 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-all duration-200"
           >
             <History className="h-4 w-4" />
           </Button>
         </div>
-        <p className="text-sm text-muted-foreground">
-          Create interactive learning exercises and practice tools
+        <p className="text-sm text-slate-700 leading-relaxed">
+          {selectedDrill 
+            ? `Edit and improve your "${selectedDrill.title}" drill`
+            : 'Create interactive learning exercises and practice tools'
+          }
         </p>
       </div>
 
       {/* Conversation History */}
       {showConversationHistory && (
-        <div className="p-4 border-b bg-muted/10">
+        <div className="p-4 border-b border-slate-200 bg-slate-50/50">
           <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium">Conversation History</h4>
-            <Button variant="outline" size="sm" onClick={handleNewConversation}>
+            <h4 className="text-sm font-semibold text-slate-800">Conversation History</h4>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleNewConversation}
+              className="border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 transition-all duration-200"
+            >
               New Chat
             </Button>
           </div>
           <div className="space-y-2 max-h-40 overflow-y-auto">
             {/* This would show conversation history */}
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-slate-500">
               Previous conversations will appear here
             </div>
           </div>
@@ -386,18 +463,29 @@ export function DrillChatSidebar({ selectedDrill, onDrillUpdate, onArtifactUpdat
       )}
 
       {/* Quick Suggestions */}
-      <div className="p-4 border-b">
-        <h4 className="text-sm font-medium mb-3">Quick Start:</h4>
+      <div className="p-4 border-b border-slate-200">
+        <h4 className="text-sm font-semibold mb-3 text-slate-800">Quick Start:</h4>
         <div className="space-y-2">
-          {quickSuggestions.map((suggestion, index) => (
+          {selectedDrill ? editingSuggestions.map((suggestion, index) => (
             <Button
               key={index}
               variant="outline"
               size="sm"
-              className="w-full justify-start text-left h-auto py-2"
+              className="w-full justify-start text-left h-auto py-2.5 border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-800 hover:border-slate-300 transition-all duration-200 rounded-lg"
               onClick={() => handleQuickSuggestion(suggestion.prompt)}
             >
-              <suggestion.icon className="h-4 w-4 mr-2 text-primary" />
+              <suggestion.icon className="h-4 w-4 mr-2 text-blue-500" />
+              <span className="text-xs">{suggestion.label}</span>
+            </Button>
+          )) : quickSuggestions.map((suggestion, index) => (
+            <Button
+              key={index}
+              variant="outline"
+              size="sm"
+              className="w-full justify-start text-left h-auto py-2.5 border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-800 hover:border-slate-300 transition-all duration-200 rounded-lg"
+              onClick={() => handleQuickSuggestion(suggestion.prompt)}
+            >
+              <suggestion.icon className="h-4 w-4 mr-2 text-blue-500" />
               <span className="text-xs">{suggestion.label}</span>
             </Button>
           ))}
@@ -406,29 +494,56 @@ export function DrillChatSidebar({ selectedDrill, onDrillUpdate, onArtifactUpdat
 
       {/* Artifact Status Indicator */}
       {currentArtifact && (
-        <div className="p-4 border-b bg-green-50">
-          <div className="flex items-center space-x-2 mb-2">
+        <div className="p-4 border-b border-slate-200 bg-gradient-to-r from-green-50 to-emerald-50">
+          <div className="flex items-center gap-2 mb-2">
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            <h4 className="text-sm font-medium text-green-800">
-              🎯 Generating {currentArtifact.language.toUpperCase()} Artifact...
+            <h4 className="text-sm font-semibold text-green-800">
+              {selectedDrill ? '🔄 Updating Drill Code...' : '🎯 Generating New Drill...'}
             </h4>
           </div>
-          <p className="text-xs text-green-700">
-            Code is being generated and displayed in the center preview panel
+          <p className="text-xs text-green-700 leading-relaxed">
+            {selectedDrill 
+              ? 'Code is being updated in real-time. Changes are automatically applied to your drill.'
+              : 'Code is being generated and displayed in the center preview panel'
+            }
           </p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSaveArtifact}
-            className="mt-2 w-full"
-          >
-            Save as Drill
-          </Button>
+          {!selectedDrill && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSaveArtifact}
+              className="mt-3 w-full border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800 hover:border-green-300 transition-all duration-200"
+            >
+              Save as Drill
+            </Button>
+          )}
+          {selectedDrill && (
+            <div className="mt-3 flex space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  // The code is already updated, just show success
+                  const successMessage: DrillChatMessage = {
+                    id: Date.now().toString(),
+                    role: 'assistant',
+                    content: `✅ Drill code updated successfully! The changes have been applied to your drill.`,
+                    timestamp: new Date(),
+                  };
+                  setMessages([...(messages || []), successMessage]);
+                  setCurrentArtifact(null);
+                }}
+                className="flex-1 border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800 hover:border-green-300 transition-all duration-200"
+              >
+                Apply Changes
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/30">
         {(messages || []).map((message) => (
           <div
             key={message.id}
@@ -439,13 +554,13 @@ export function DrillChatSidebar({ selectedDrill, onDrillUpdate, onArtifactUpdat
           >
             <div
               className={cn(
-                'max-w-[80%] rounded-lg px-3 py-2 text-sm',
+                'max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-sm transition-all duration-200',
                 message.role === 'user'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted'
+                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white'
+                  : 'bg-white border border-slate-200'
               )}
             >
-              <div className="whitespace-pre-wrap">{message.content}</div>
+              <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
             </div>
           </div>
         ))}
@@ -460,22 +575,22 @@ export function DrillChatSidebar({ selectedDrill, onDrillUpdate, onArtifactUpdat
           >
             <div
               className={cn(
-                'max-w-[80%] rounded-lg px-3 py-2 text-sm',
+                'max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-sm transition-all duration-200',
                 streamingMessage.role === 'user'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted'
+                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white'
+                  : 'bg-white border border-slate-200'
               )}
             >
-              <div className="whitespace-pre-wrap">{streamingMessage.content}</div>
+              <div className="whitespace-pre-wrap leading-relaxed">{streamingMessage.content}</div>
             </div>
           </div>
         )}
         
         {isLoading && !streamingMessage && (
           <div className="flex justify-start">
-            <div className="bg-muted rounded-lg px-3 py-2 text-sm">
-              <div className="flex items-center space-x-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+            <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 text-sm shadow-sm">
+              <div className="flex items-center gap-2 text-slate-600">
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
                 <span>Creating your drill...</span>
               </div>
             </div>
@@ -486,24 +601,52 @@ export function DrillChatSidebar({ selectedDrill, onDrillUpdate, onArtifactUpdat
       </div>
 
       {/* Input */}
-      <div className="p-4 border-t bg-muted/5">
-        <div className="flex space-x-2">
-          <Input
+      <div className="p-4 border-t border-slate-200 bg-white">
+        <div className="relative flex items-end">
+          {/* Plus Button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="absolute left-3 bottom-2 z-10 h-8 w-8 p-0 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all duration-200 rounded-full"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+          
+          {/* Textarea Field - Replaces Input for multi-line support */}
+          <textarea
+            ref={textareaRef}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Describe the drill you want to create..."
-            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+            onKeyDown={handleKeyPress}
+            placeholder={selectedDrill 
+              ? "Describe the changes you want to make to this drill..."
+              : "Describe the drill you want to create..."
+            }
             disabled={isLoading}
+            style={{ height: `${inputHeight}px` }}
+            className="flex-1 pl-12 pr-20 py-3 rounded-2xl border-2 border-slate-200 bg-white shadow-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-300 placeholder:text-slate-400 text-slate-700 resize-none overflow-hidden leading-6"
+            rows={1}
           />
+          
+          {/* Send Button */}
           <Button
             onClick={handleSendMessage}
             disabled={!inputValue.trim() || isLoading}
             size="sm"
+            className="absolute right-2 bottom-2 h-8 w-8 p-0 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
           >
-            <Send className="h-4 w-4" />
+            {isLoading ? (
+              <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
           </Button>
         </div>
       </div>
     </div>
   );
+}
+
+export function DrillChatSidebar({ selectedDrill, onDrillUpdate, onArtifactUpdate }: DrillChatSidebarProps) {
+  return <DrillChatSidebarClient selectedDrill={selectedDrill} onDrillUpdate={onDrillUpdate} onArtifactUpdate={onArtifactUpdate} />;
 }

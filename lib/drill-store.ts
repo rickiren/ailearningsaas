@@ -7,6 +7,7 @@ interface DrillStore {
   drills: Drill[];
   currentDrill: Drill | null;
   isLoading: boolean;
+  lastUpdated: number; // Add this for triggering re-renders
   
   // Actions
   setCurrentDrill: (drill: Drill | null) => void;
@@ -15,6 +16,10 @@ interface DrillStore {
   updateDrill: (id: string, updates: Partial<Drill>) => Promise<void>;
   deleteDrill: (id: string) => Promise<void>;
   duplicateDrill: (id: string) => Promise<string>;
+  
+  // NEW: Direct content updates for AI
+  updateDrillContent: (drillId: string, content: string) => Promise<void>;
+  handleArtifactCommand: (drillId: string, command: 'create' | 'update' | 'rewrite', content: string) => Promise<void>;
   
   // Queries
   getDrillById: (id: string) => Drill | undefined;
@@ -76,6 +81,7 @@ export const useDrillStore = create<DrillStore>((set, get) => ({
   ],
   currentDrill: null,
   isLoading: false,
+  lastUpdated: 0, // Initialize lastUpdated
 
   setCurrentDrill: (drill) => set({ currentDrill: drill }),
 
@@ -125,9 +131,9 @@ export const useDrillStore = create<DrillStore>((set, get) => ({
         difficulty: drillData.difficulty,
         estimated_time: drillData.estimatedTime,
         code: drillData.code,
-        project_id: drillData.metadata?.projectId,
-        skill_atom_ids: drillData.metadata?.skillAtomIds || [],
-        tags: drillData.metadata?.tags || [],
+        project_id: undefined,
+        skill_atom_ids: [],
+        tags: [],
         version: 1,
         is_active: true,
         user_id: undefined, // Will be set by RLS policies
@@ -164,6 +170,7 @@ export const useDrillStore = create<DrillStore>((set, get) => ({
       set((state) => ({
         drills: [...state.drills, localDrill],
         currentDrill: localDrill,
+        lastUpdated: Date.now(), // Trigger re-renders
       }));
 
       return localDrill.id;
@@ -208,6 +215,7 @@ export const useDrillStore = create<DrillStore>((set, get) => ({
             : drill
         ),
         currentDrill: state.currentDrill?.id === id ? { ...state.currentDrill, ...updates } : state.currentDrill,
+        lastUpdated: Date.now(), // Trigger re-renders
       }));
     } catch (error) {
       console.error('Failed to update drill:', error);
@@ -265,6 +273,37 @@ export const useDrillStore = create<DrillStore>((set, get) => ({
       return localDrill.id;
     } catch (error) {
       console.error('Failed to duplicate drill:', error);
+      throw error;
+    }
+  },
+
+  updateDrillContent: async (drillId: string, content: string) => {
+    try {
+      // Update in database first using existing updateDrill method
+      await get().updateDrill(drillId, { 
+        code: content,
+      });
+      
+      // The updateDrill method already handles local state updates and lastUpdated
+    } catch (error) {
+      console.error('Failed to update drill content:', error);
+      throw error;
+    }
+  },
+
+  handleArtifactCommand: async (drillId: string, command: 'create' | 'update' | 'rewrite', content: string) => {
+    try {
+      // Use the existing updateDrill method for consistency
+      await get().updateDrill(drillId, { 
+        code: content,
+      });
+      
+      // Log the AI action
+      console.log(`AI ${command}ed drill content for drill:`, drillId);
+      
+      // The updateDrill method already triggers re-renders via lastUpdated
+    } catch (error) {
+      console.error(`Failed to handle AI artifact command (${command}):`, error);
       throw error;
     }
   },

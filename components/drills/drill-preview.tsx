@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Edit, Copy, Trash2, Maximize2, Minimize2, Save, Target, Clock, Code } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Drill } from '@/types/drills';
@@ -10,13 +10,55 @@ import { ArtifactRenderer } from './artifact-renderer';
 
 interface DrillPreviewProps {
   drill: Drill | null;
+  onDrillUpdate?: (drill: Drill) => void;
+  onCodeUpdate?: (code: string) => void;
 }
 
-export function DrillPreview({ drill }: DrillPreviewProps) {
+export function DrillPreview({ drill, onDrillUpdate, onCodeUpdate }: DrillPreviewProps) {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedCode, setEditedCode] = useState('');
-  const { updateDrill, deleteDrill } = useDrillStore();
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [localDrill, setLocalDrill] = useState<Drill | null>(drill);
+  const { updateDrill, deleteDrill, lastUpdated } = useDrillStore();
+  
+  // This will automatically re-render when AI updates content
+  useEffect(() => {
+    if (drill && lastUpdated) {
+      // Force re-render of preview with new content
+      console.log('Drill content updated, re-rendering preview');
+      setLocalDrill(drill);
+    }
+  }, [drill?.code, lastUpdated]);
+
+  // Update local drill when prop changes
+  useEffect(() => {
+    setLocalDrill(drill);
+    setIsUpdating(false);
+  }, [drill]);
+
+  // Remove the problematic useEffect that was causing infinite loops
+  // The onDrillUpdate will be called directly when needed
+
+  // Handle real-time code updates from chat
+  const handleCodeUpdate = (newCode: string) => {
+    if (localDrill) {
+      setIsUpdating(true);
+      const updatedDrill = { ...localDrill, code: newCode };
+      setLocalDrill(updatedDrill);
+      
+      // Update the store
+      updateDrill(localDrill.id, { code: newCode });
+      
+      // Notify parent component
+      if (onCodeUpdate) {
+        onCodeUpdate(newCode);
+      }
+      
+      // Clear updating state after a short delay
+      setTimeout(() => setIsUpdating(false), 2000);
+    }
+  };
 
   if (!drill) {
     return (
@@ -34,7 +76,7 @@ export function DrillPreview({ drill }: DrillPreviewProps) {
 
   const handleCopyCode = async () => {
     try {
-      await navigator.clipboard.writeText(drill.code);
+      await navigator.clipboard.writeText(localDrill?.code || '');
       // You could add a toast notification here
     } catch (err) {
       console.error('Failed to copy code:', err);
@@ -42,40 +84,43 @@ export function DrillPreview({ drill }: DrillPreviewProps) {
   };
 
   const handleDelete = () => {
-    if (confirm('Are you sure you want to delete this drill?')) {
-      deleteDrill(drill.id);
-    }
-  };
-
-  const handleSaveChanges = () => {
-    if (drill && editedCode) {
-      updateDrill(drill.id, { code: editedCode });
-      setIsEditing(false);
+    if (localDrill && confirm('Are you sure you want to delete this drill?')) {
+      deleteDrill(localDrill.id);
     }
   };
 
   const handleEditToggle = () => {
     if (!isEditing) {
-      setEditedCode(drill.code);
+      setEditedCode(localDrill?.code || '');
     }
     setIsEditing(!isEditing);
   };
 
+  const handleSaveChanges = () => {
+    if (localDrill && editedCode) {
+      updateDrill(localDrill.id, { code: editedCode });
+      setLocalDrill({ ...localDrill, code: editedCode });
+      setIsEditing(false);
+    }
+  };
+
   const renderPreview = () => {
-    if (drill.type === 'html') {
+    if (localDrill?.type === 'html') {
       return (
         <ArtifactRenderer
           language="html"
-          code={drill.code}
-          onSave={(updatedCode) => updateDrill(drill.id, { code: updatedCode })}
+          code={localDrill.code}
+          onSave={(updatedCode) => handleCodeUpdate(updatedCode)}
+          isUpdating={isUpdating}
         />
       );
-    } else if (drill.type === 'jsx') {
+    } else if (localDrill?.type === 'jsx') {
       return (
         <ArtifactRenderer
           language="jsx"
-          code={drill.code}
-          onSave={(updatedCode) => updateDrill(drill.id, { code: updatedCode })}
+          code={localDrill.code}
+          onSave={(updatedCode) => handleCodeUpdate(updatedCode)}
+          isUpdating={isUpdating}
         />
       );
     }
@@ -98,19 +143,19 @@ export function DrillPreview({ drill }: DrillPreviewProps) {
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b bg-background">
         <div className="flex-1">
-          <h2 className="text-xl font-semibold">{drill.title}</h2>
-          <p className="text-sm text-muted-foreground">{drill.description}</p>
+          <h2 className="text-xl font-semibold">{localDrill?.title}</h2>
+          <p className="text-sm text-muted-foreground">{localDrill?.description}</p>
         </div>
         
         <div className="flex items-center space-x-2">
           <div className="flex items-center space-x-4 text-sm text-muted-foreground">
             <div className="flex items-center space-x-1">
               <Target className="h-4 w-4" />
-              <span>{drill.skillName}</span>
+              <span>{localDrill?.skillName}</span>
             </div>
             <div className="flex items-center space-x-1">
               <Clock className="h-4 w-4" />
-              <span>{drill.estimatedTime}m</span>
+              <span>{localDrill?.estimatedTime}m</span>
             </div>
           </div>
           
@@ -161,7 +206,7 @@ export function DrillPreview({ drill }: DrillPreviewProps) {
       <div className="px-4 py-3 bg-muted/5 border-b">
         <h4 className="text-sm font-medium mb-2">Learning Objectives:</h4>
         <div className="flex flex-wrap gap-2">
-          {drill.learningObjectives.map((objective, index) => (
+          {localDrill?.learningObjectives.map((objective, index) => (
             <span
               key={index}
               className="px-2 py-1 bg-primary/10 text-primary text-xs rounded-full"

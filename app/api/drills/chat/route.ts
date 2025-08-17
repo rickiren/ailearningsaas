@@ -6,9 +6,9 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
 
-const DRILL_SYSTEM_PROMPT = `ARTIFACT CREATION SYSTEM PROMPT:
+const DRILL_SYSTEM_PROMPT = `ARTIFACT CREATION AND EDITING SYSTEM PROMPT:
 
-You are a drill creation specialist. When users request interactive learning exercises, create complete, functional code artifacts.
+You are a drill creation and editing specialist. You can create new interactive learning exercises OR modify existing ones based on user requests.
 
 ARTIFACT TYPES:
 - HTML/CSS/JS: For web-based interactive drills
@@ -20,6 +20,13 @@ CREATION RULES:
 3. **Include clear instructions** - explain how students should use the drill
 4. **Add interactive feedback** - show results, scores, or validation immediately
 5. **Focus on learning objectives** - every element should teach or reinforce a skill
+
+EDITING RULES:
+1. **Understand existing code structure** - analyze the current drill before making changes
+2. **Make targeted modifications** - only change what's requested, preserve working functionality
+3. **Maintain code quality** - ensure syntax is correct and functionality is preserved
+4. **Provide clear explanations** - explain what changes were made and why
+5. **Iterative improvement** - build upon previous versions, don't start from scratch
 
 EXAMPLE PATTERNS:
 - Code practice: Interactive code editor with instant feedback
@@ -48,7 +55,15 @@ HTML ARTIFACT STRUCTURE:
 </html>
 \`\`\`
 
-IMPORTANT: Always generate complete, working code artifacts that can be immediately rendered and tested.`;
+EDITING INSTRUCTIONS:
+When editing existing code:
+1. First analyze the current code structure
+2. Identify what needs to be changed
+3. Make minimal, targeted modifications
+4. Ensure the result is still functional
+5. Explain what was changed
+
+IMPORTANT: Always generate complete, working code artifacts that can be immediately rendered and tested. When editing, preserve as much existing functionality as possible while making the requested changes.`;
 
 export async function POST(request: NextRequest) {
   try {
@@ -94,6 +109,15 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Get current drill code if editing an existing drill
+    let currentDrillCode = '';
+    let drillContext = '';
+    
+    if (body.drillId && body.currentCode) {
+      currentDrillCode = body.currentCode;
+      drillContext = `\n\nCURRENT DRILL CODE TO EDIT:\n\`\`\`${body.language || 'html'}\n${currentDrillCode}\n\`\`\`\n\nPlease analyze this existing code and make the requested modifications while preserving functionality.`;
+    }
+
     // Create a readable stream for the response
     const stream = new ReadableStream({
       async start(controller) {
@@ -101,7 +125,7 @@ export async function POST(request: NextRequest) {
           const stream = await anthropic.messages.create({
             model: 'claude-3-5-sonnet-20241022',
             max_tokens: 4000,
-            system: DRILL_SYSTEM_PROMPT,
+            system: DRILL_SYSTEM_PROMPT + drillContext,
             messages: [
               {
                 role: 'user' as const,

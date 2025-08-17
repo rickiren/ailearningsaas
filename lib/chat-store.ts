@@ -123,6 +123,22 @@ export const useChatStore = create<ExtendedChatState>((set, get) => ({
         throw new Error('Conversation not found');
       }
 
+      // Prevent loading drill-related conversations in the main chat interface
+      // Use the same robust filtering logic as loadConversations
+      if (conversation.metadata?.type === 'drill_chat') {
+        throw new Error('Cannot load drill conversations in the main chat interface');
+      }
+      
+      if (conversation.metadata?.drillId) {
+        throw new Error('Cannot load drill conversations in the main chat interface');
+      }
+      
+      const title = conversation.title.toLowerCase();
+      const drillKeywords = ['drill', 'exercise', 'practice', 'quiz', 'test'];
+      if (drillKeywords.some(keyword => title.includes(keyword))) {
+        throw new Error('Cannot load drill conversations in the main chat interface');
+      }
+
       // Load recent messages (last 30 for context)
       const messages = await ConversationStore.getRecentMessages(conversationId, 30);
       
@@ -178,7 +194,31 @@ export const useChatStore = create<ExtendedChatState>((set, get) => ({
       set({ isLoading: true, error: null });
       
       const conversations = await ConversationStore.getConversations();
-      set({ conversations });
+      
+      // Filter out drill-related conversations to keep them separate
+      // More robust filtering that checks both metadata and title
+      const learningPathConversations = conversations.filter(conv => {
+        // Check if conversation is explicitly marked as drill chat
+        if (conv.metadata?.type === 'drill_chat') {
+          return false;
+        }
+        
+        // Check if conversation has drill-related metadata
+        if (conv.metadata?.drillId) {
+          return false;
+        }
+        
+        // Check if title contains drill-related keywords (case-insensitive)
+        const title = conv.title.toLowerCase();
+        const drillKeywords = ['drill', 'exercise', 'practice', 'quiz', 'test'];
+        if (drillKeywords.some(keyword => title.includes(keyword))) {
+          return false;
+        }
+        
+        return true;
+      });
+      
+      set({ conversations: learningPathConversations });
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to load conversations' });
     } finally {

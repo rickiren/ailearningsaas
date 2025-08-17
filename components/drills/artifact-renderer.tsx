@@ -10,13 +10,15 @@ interface ArtifactRendererProps {
   code: string;
   onSave?: (code: string) => void;
   className?: string;
+  isUpdating?: boolean;
 }
 
 export function ArtifactRenderer({
   language,
   code,
   onSave,
-  className
+  className,
+  isUpdating = false
 }: ArtifactRendererProps) {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [activeTab, setActiveTab] = useState<'preview' | 'html'>('preview');
@@ -97,6 +99,13 @@ export function ArtifactRenderer({
                         <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded-full font-medium">
                           {language.toUpperCase()}
                         </span>
+                        
+                        {isUpdating && (
+                          <div className="flex items-center space-x-2 px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">
+                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                            <span>Live Updates</span>
+                          </div>
+                        )}
                         
                         {/* Tabs */}
                         <div className="flex space-x-1">

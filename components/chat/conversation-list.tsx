@@ -3,7 +3,8 @@
 import { useChatStore } from '@/lib/chat-store';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Plus, MessageSquare, Trash2 } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, Sparkles } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export function ConversationList() {
   const { 
@@ -59,43 +60,66 @@ export function ConversationList() {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-white">
       {/* Header */}
-      <div className="p-4 border-b">
+      <div className="p-6 border-b border-slate-200">
         <Button 
           onClick={handleNewConversation}
           disabled={isLoading}
-          className="w-full justify-start gap-2"
+          className="w-full justify-center gap-3 h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl font-medium"
           variant="outline"
         >
-          <Plus className="h-4 w-4" />
+          {isLoading ? (
+            <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <Plus className="h-5 w-5" />
+          )}
           New Chat
         </Button>
       </div>
 
       {/* Conversation List */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div className="flex-1 overflow-y-auto p-4 space-y-2">
         {conversations.map((conversation) => (
           <div
             key={conversation.id}
-            className={`group flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors hover:bg-accent ${
-              currentConversationId === conversation.id ? 'bg-accent' : ''
+            className={`group relative flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all duration-200 hover:shadow-sm ${
+              currentConversationId === conversation.id 
+                ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 shadow-sm' 
+                : 'hover:bg-slate-50 border border-transparent hover:border-slate-200'
             }`}
             onClick={() => handleConversationSelect(conversation.id)}
           >
-            <MessageSquare className="h-4 w-4 text-muted-foreground shrink-0" />
+            <div className={cn(
+              'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all duration-200',
+              currentConversationId === conversation.id
+                ? 'bg-blue-100 text-blue-600'
+                : 'bg-slate-100 text-slate-600 group-hover:bg-slate-200 group-hover:text-slate-700'
+            )}>
+              <MessageSquare className="h-4 w-4" />
+            </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">
+              <p className={cn(
+                'text-sm font-medium truncate transition-colors',
+                currentConversationId === conversation.id
+                  ? 'text-slate-800'
+                  : 'text-slate-700 group-hover:text-slate-800'
+              )}>
                 {conversation.title}
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className={cn(
+                'text-xs transition-colors',
+                currentConversationId === conversation.id
+                  ? 'text-slate-600'
+                  : 'text-slate-500 group-hover:text-slate-600'
+              )}>
                 {formatDate(conversation.updated_at)}
               </p>
             </div>
             <Button
               variant="ghost"
               size="sm"
-              className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0"
+              className="opacity-0 group-hover:opacity-100 transition-all duration-200 h-7 w-7 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
               onClick={(e) => {
                 e.stopPropagation();
                 if (confirm('Are you sure you want to delete this conversation? This action cannot be undone.')) {
@@ -103,16 +127,18 @@ export function ConversationList() {
                 }
               }}
             >
-              <Trash2 className="h-3 w-3" />
+              <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
         ))}
         
         {conversations.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground">
-            <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No conversations yet</p>
-            <p className="text-xs">Start a new chat to begin</p>
+          <div className="text-center py-12 text-slate-500">
+            <div className="h-12 w-12 bg-slate-100 rounded-xl flex items-center justify-center mx-auto mb-3">
+              <MessageSquare className="h-6 w-6 text-slate-400" />
+            </div>
+            <p className="text-sm font-medium text-slate-600 mb-1">No conversations yet</p>
+            <p className="text-xs text-slate-500">Start a new chat to begin</p>
           </div>
         )}
       </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Trash2, Map } from 'lucide-react';
+import { Trash2, Map, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChatMessage } from './chat-message';
 import { ChatInput } from './chat-input';
@@ -205,105 +205,112 @@ export function ChatInterface() {
   };
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen bg-slate-50">
       {/* Conversation Sidebar */}
-      <div className="w-80 border-r bg-muted/10">
+      <div className="w-80 border-r border-slate-200 bg-white/80 backdrop-blur-sm">
         <ConversationList />
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col bg-white">
         {/* Header */}
-        <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-semibold">AI Learning Path Creator</h1>
-              <p className="text-sm text-muted-foreground">
-                Get help creating comprehensive learning paths for any skill
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (showSavedMindmaps) {
-                    setShowSavedMindmaps(false);
-                  } else {
-                    loadSavedMindmaps();
-                    setShowSavedMindmaps(true);
-                  }
-                }}
-                className="gap-2"
-              >
-                <Map className="h-4 w-4" />
-                {showSavedMindmaps ? 'Hide Saved' : 'View Saved Mindmaps'}
-              </Button>
-              {messages.length > 0 && (
+        <header className="border-b border-slate-200 bg-white/95 backdrop-blur-xl supports-[backdrop-filter]:bg-white/80 px-6 py-4">
+          <div className="max-w-4xl mx-auto">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <h1 className="text-2xl font-bold text-slate-900">AI Learning Path Creator</h1>
+                <p className="text-sm text-slate-600">
+                  Get help creating comprehensive learning paths for any skill
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={clearMessages}
-                  className="gap-2"
+                  onClick={() => {
+                    if (showSavedMindmaps) {
+                      setShowSavedMindmaps(false);
+                    } else {
+                      loadSavedMindmaps();
+                      setShowSavedMindmaps(true);
+                    }
+                  }}
+                  className="gap-2 border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-all duration-200"
                 >
-                  <Trash2 className="h-4 w-4" />
-                  Clear Chat
+                  <Map className="h-4 w-4" />
+                  {showSavedMindmaps ? 'Hide Saved' : 'View Saved Mindmaps'}
                 </Button>
-              )}
+                {messages.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={clearMessages}
+                    className="gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 transition-all duration-200"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Clear Chat
+                  </Button>
+                )}
+              </div>
             </div>
-          </div>
 
-          {/* Saved Mindmaps Dropdown */}
-          {showSavedMindmaps && (
-            <div className="mt-3 p-3 bg-muted/20 border rounded-lg">
-              <h3 className="text-sm font-semibold mb-2">Saved Learning Paths</h3>
-              {savedMindmaps.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No saved mindmaps found.</p>
-              ) : (
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {savedMindmaps.map((project) => (
-                    <div
-                      key={project.id}
-                      className="flex items-center justify-between p-2 bg-background rounded border hover:bg-muted/50 cursor-pointer"
-                      onClick={() => handleLoadSavedMindmap(project)}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-medium truncate">{project.title}</h4>
-                        {project.description && (
-                          <p className="text-xs text-muted-foreground truncate">{project.description}</p>
-                        )}
+            {/* Saved Mindmaps Dropdown */}
+            {showSavedMindmaps && (
+              <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl">
+                <h3 className="text-sm font-semibold mb-3 text-slate-800">Saved Learning Paths</h3>
+                {savedMindmaps.length === 0 ? (
+                  <p className="text-sm text-slate-600">No saved mindmaps found.</p>
+                ) : (
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {savedMindmaps.map((project) => (
+                      <div
+                        key={project.id}
+                        className="flex items-center justify-between p-3 bg-white rounded-lg border border-blue-200 hover:bg-blue-50 cursor-pointer transition-all duration-200 hover:shadow-sm"
+                        onClick={() => handleLoadSavedMindmap(project)}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-sm font-medium truncate text-slate-800">{project.title}</h4>
+                          {project.description && (
+                            <p className="text-xs text-slate-600 truncate">{project.description}</p>
+                          )}
+                        </div>
+                        <div className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full font-medium ml-2">
+                          {project.metadata?.totalNodes || 0} topics
+                        </div>
                       </div>
-                      <div className="text-xs text-muted-foreground ml-2">
-                        {project.metadata?.totalNodes || 0} topics
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </header>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto bg-slate-50/30">
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full max-w-4xl mx-auto px-4">
-            <div className="text-center space-y-6">
-              <div className="space-y-2">
-                <h2 className="text-2xl font-semibold">Welcome to AI Learning Path Creator</h2>
-                <p className="text-muted-foreground max-w-md">
+          <div className="flex flex-col items-center justify-center h-full max-w-4xl mx-auto px-6">
+            <div className="text-center space-y-8">
+              <div className="space-y-4">
+                <div className="flex justify-center">
+                  <div className="h-16 w-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg">
+                    <Sparkles className="h-8 w-8 text-white" />
+                  </div>
+                </div>
+                <h2 className="text-3xl font-bold text-slate-900">Welcome to AI Learning Path Creator</h2>
+                <p className="text-slate-600 max-w-lg text-lg leading-relaxed">
                   Describe the skill or topic you want to teach, and I'll help you create a comprehensive learning path with modules, exercises, and resources.
                 </p>
               </div>
               
-              <div className="space-y-3">
-                <p className="text-sm font-medium text-muted-foreground">Try these examples:</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="space-y-4">
+                <p className="text-sm font-medium text-slate-700">Try these examples:</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {EXAMPLE_PROMPTS.map((prompt, index) => (
                     <Button
                       key={index}
                       variant="outline"
-                      className="text-left justify-start h-auto py-3 px-4 whitespace-normal"
+                      className="text-left justify-start h-auto py-4 px-5 whitespace-normal border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 transition-all duration-200 rounded-xl"
                       onClick={() => handleExampleClick(prompt)}
                     >
                       {prompt}
@@ -321,7 +328,7 @@ export function ChatInterface() {
             
             {/* Streaming JSON Display */}
             {streamingJson && (
-              <div className="px-3 py-4">
+              <div className="px-4 py-6">
                 <JsonCodeBlock 
                   data={streamingJson.data}
                   title={`Learning Path: ${streamingJson.title}`}
