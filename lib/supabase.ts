@@ -147,6 +147,68 @@ export interface Database {
           updated_at?: string
         }
       }
+      drills: {
+        Row: {
+          id: string
+          title: string
+          description?: string
+          type: 'html' | 'jsx' | 'interactive' | 'simulation' | 'quiz'
+          skill_name: string
+          learning_objectives: string[]
+          difficulty: 'beginner' | 'intermediate' | 'advanced'
+          estimated_time: number
+          code: string
+          project_id?: string
+          skill_atom_ids: string[]
+          tags: string[]
+          version: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+          user_id?: string
+          metadata?: any
+        }
+        Insert: {
+          id?: string
+          title: string
+          description?: string
+          type: 'html' | 'jsx' | 'interactive' | 'simulation' | 'quiz'
+          skill_name: string
+          learning_objectives: string[]
+          difficulty: 'beginner' | 'intermediate' | 'advanced'
+          estimated_time?: number
+          code: string
+          project_id?: string
+          skill_atom_ids?: string[]
+          tags?: string[]
+          version?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+          user_id?: string
+          metadata?: any
+        }
+        Update: {
+          id?: string
+          title?: string
+          description?: string
+          type?: 'html' | 'jsx' | 'interactive' | 'simulation' | 'quiz'
+          skill_name?: string
+          learning_objectives?: string[]
+          difficulty?: 'beginner' | 'intermediate' | 'advanced'
+          estimated_time?: number
+          code?: string
+          project_id?: string
+          skill_atom_ids?: string[]
+          tags?: string[]
+          version?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+          user_id?: string
+          metadata?: any
+        }
+      }
     }
   }
 }
@@ -159,3 +221,6 @@ export type Project = Database['public']['Tables']['projects']['Row']
 export type ProjectInsert = Database['public']['Tables']['projects']['Insert']
 export type SkillAtom = Database['public']['Tables']['skill_atoms']['Row']
 export type SkillAtomInsert = Database['public']['Tables']['skill_atoms']['Insert']
+export type Drill = Database['public']['Tables']['drills']['Row']
+export type DrillInsert = Database['public']['Tables']['drills']['Insert']
+export type DrillUpdate = Database['public']['Tables']['drills']['Update']

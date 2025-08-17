@@ -75,6 +75,21 @@ export class ConversationStore {
     }
   }
 
+  // Update conversation metadata
+  static async updateConversationMetadata(id: string, metadata: any): Promise<void> {
+    const { error } = await supabase
+      .from('conversations')
+      .update({ 
+        metadata,
+        updated_at: new Date().toISOString() 
+      })
+      .eq('id', id)
+
+    if (error) {
+      throw new Error(`Failed to update conversation metadata: ${error.message}`)
+    }
+  }
+
   // Delete conversation and all messages
   static async deleteConversation(id: string): Promise<void> {
     // Delete messages first
