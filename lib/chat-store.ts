@@ -3,6 +3,42 @@ import { ChatState, Message, Conversation } from '@/types/chat';
 import { processAIMessage, validateMindMapData } from './utils';
 import { ConversationStore } from './conversation-store';
 
+// Helper function to extract user goals from message content
+function extractUserGoals(content: string): string[] {
+  const goals: string[] = [];
+  const lowerContent = content.toLowerCase();
+  
+  // Look for goal patterns
+  const goalPatterns = [
+    /(?:i\s+)?(?:want\s+to\s+learn|goal\s+is|trying\s+to|need\s+to|objective\s+is)\s+(.+?)(?:\.|$)/gi,
+    /(?:i\s+)?(?:want\s+to|would\s+like\s+to|hope\s+to)\s+(.+?)(?:\.|$)/gi,
+  ];
+  
+  goalPatterns.forEach(pattern => {
+    const matches = content.match(pattern);
+    if (matches) {
+      matches.forEach(match => {
+        const goal = match.replace(/^(?:i\s+)?(?:want\s+to\s+learn|goal\s+is|trying\s+to|need\s+to|objective\s+is|want\s+to|would\s+like\s+to|hope\s+to)\s+/i, '').trim();
+        if (goal && goal.length > 3) {
+          goals.push(goal);
+        }
+      });
+    }
+  });
+  
+  return goals;
+}
+
+// Conversation context interface for intelligent routing
+interface ConversationContext {
+  currentMindmap: any;
+  conversationPhase: 'discovery' | 'creation' | 'editing' | 'complete';
+  userGoals: string[];
+  lastIntent: string;
+  lastAction: string;
+  hasActiveProject: boolean;
+}
+
 interface StreamingJsonData {
   type: string;
   data: Record<string, unknown>;
@@ -13,6 +49,7 @@ interface StreamingJsonData {
 interface ExtendedChatState extends ChatState {
   streamingMessageId: string | null;
   streamingJson: StreamingJsonData | null;
+  conversationContext: ConversationContext;
   updateStreamingMessage: (id: string, content: string) => void;
   finishStreamingMessage: (id: string) => void;
   setStreamingJson: (data: StreamingJsonData | null) => void;
@@ -22,6 +59,10 @@ interface ExtendedChatState extends ChatState {
   loadConversations: () => Promise<void>;
   deleteConversation: (conversationId: string) => Promise<void>;
   refreshConversations: (newConversationId?: string) => Promise<void>;
+  updateConversationContext: (updates: Partial<ConversationContext>) => void;
+  updateContextForEditing: (action: string, mindmapData?: any) => void;
+  resetConversationContext: () => void;
+  getContextForRouting: () => ConversationContext;
 }
 
 export const useChatStore = create<ExtendedChatState>((set, get) => ({
@@ -32,6 +73,14 @@ export const useChatStore = create<ExtendedChatState>((set, get) => ({
   error: null,
   streamingMessageId: null,
   streamingJson: null,
+  conversationContext: {
+    currentMindmap: null,
+    conversationPhase: 'discovery',
+    userGoals: [],
+    lastIntent: '',
+    lastAction: '',
+    hasActiveProject: false,
+  },
 
   addMessage: (messageData) => {
     // Don't add messages if no conversation is selected
@@ -67,8 +116,47 @@ export const useChatStore = create<ExtendedChatState>((set, get) => ({
           }
         });
         window.dispatchEvent(event);
+
+        // Auto-update conversation context for new mindmap creation
+        get().updateConversationContext({
+          currentMindmap: jsonData.data,
+          conversationPhase: 'creation',
+          hasActiveProject: true,
+          lastAction: 'mindmap_created',
+        });
       }
     }
+
+      // Auto-update context based on user message content
+  if (messageData.role === 'user' && messageData.content) {
+    const userContent = messageData.content.toLowerCase();
+    
+    // Extract potential user goals
+    const goalKeywords = ['want to learn', 'goal is', 'trying to', 'need to', 'objective'];
+    const hasGoals = goalKeywords.some(keyword => userContent.includes(keyword));
+    
+    if (hasGoals) {
+      const currentGoals = get().conversationContext.userGoals;
+      const newGoals = extractUserGoals(messageData.content);
+      if (newGoals.length > 0) {
+        get().updateConversationContext({
+          userGoals: [...currentGoals, ...newGoals],
+          lastAction: 'goals_extracted',
+        });
+      }
+    }
+
+    // Detect completion indicators
+    const completionKeywords = ['done', 'finished', 'complete', 'that\'s all', 'thank you', 'thanks'];
+    const isComplete = completionKeywords.some(keyword => userContent.includes(keyword));
+    
+    if (isComplete) {
+      get().updateConversationContext({
+        conversationPhase: 'complete',
+        lastAction: 'conversation_completed',
+      });
+    }
+  }
 
     return message.id;
   },
@@ -196,6 +284,26 @@ export const useChatStore = create<ExtendedChatState>((set, get) => ({
         messages: localMessages,
         currentConversationId: conversationId,
       });
+
+      // Update context if conversation has mindmap data
+      const hasMindmapData = localMessages.some(msg => 
+        msg.artifact_data && msg.artifact_data.type === 'mindmap'
+      );
+      
+      if (hasMindmapData) {
+        const lastMindmapMessage = localMessages
+          .filter(msg => msg.artifact_data && msg.artifact_data.type === 'mindmap')
+          .pop();
+        
+        if (lastMindmapMessage?.artifact_data) {
+          get().updateConversationContext({
+            currentMindmap: lastMindmapMessage.artifact_data.data,
+            conversationPhase: 'editing',
+            hasActiveProject: true,
+            lastAction: 'mindmap_loaded',
+          });
+        }
+      }
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to load conversation' });
     } finally {
@@ -316,6 +424,54 @@ export const useChatStore = create<ExtendedChatState>((set, get) => ({
     error: null, 
     streamingMessageId: null, 
     streamingJson: null,
-    currentConversationId: null 
+    currentConversationId: null,
+    conversationContext: {
+      currentMindmap: null,
+      conversationPhase: 'discovery',
+      userGoals: [],
+      lastIntent: '',
+      lastAction: '',
+      hasActiveProject: false,
+    }
   }),
+
+  // Conversation context management functions
+  updateConversationContext: (updates) => {
+    set((state) => ({
+      conversationContext: {
+        ...state.conversationContext,
+        ...updates,
+      },
+    }));
+  },
+
+  // Update context when mindmap editing occurs
+  updateContextForEditing: (action: string, mindmapData?: any) => {
+    set((state) => ({
+      conversationContext: {
+        ...state.conversationContext,
+        conversationPhase: 'editing',
+        lastAction: action,
+        hasActiveProject: true,
+        ...(mindmapData && { currentMindmap: mindmapData }),
+      },
+    }));
+  },
+
+  resetConversationContext: () => {
+    set({
+      conversationContext: {
+        currentMindmap: null,
+        conversationPhase: 'discovery',
+        userGoals: [],
+        lastIntent: '',
+        lastAction: '',
+        hasActiveProject: false,
+      },
+    });
+  },
+
+  getContextForRouting: () => {
+    return get().conversationContext;
+  },
 }));

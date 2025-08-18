@@ -2,12 +2,16 @@ import { Anthropic } from '@anthropic-ai/sdk';
 import { NextRequest } from 'next/server';
 import { ChatRequest } from '@/types/chat';
 import { ConversationStore } from '@/lib/conversation-store';
+import { classifyUserIntent } from '@/lib/intent-classifier';
+import { routeIntent } from '@/lib/response-router';
+import { useChatStore } from '@/lib/chat-store';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
 
-const SYSTEM_PROMPT = `You are an expert learning path architect and educational consultant. Your primary goal is to help course creators design the most effective, streamlined path for their students to master any skill from complete beginner to competent practitioner.
+// Base system prompt - will be enhanced by intent-specific routing
+const BASE_SYSTEM_PROMPT = `You are an expert learning path architect and educational consultant. Your primary goal is to help course creators design the most effective, streamlined path for their students to master any skill from complete beginner to competent practitioner.
 
 CORE PRINCIPLES:
 - Think like a world-class instructor who understands how adults learn best
@@ -50,56 +54,6 @@ You can execute these functions through natural language commands like:
 - "Set the difficulty of 'React Hooks' to intermediate"
 - "Add the skill 'ES6 Syntax' to 'JavaScript Basics'"
 - "Move the module 'Error Handling' to 'JavaScript Fundamentals'"
-
-CONVERSATION APPROACH:
-1. **Discovery Phase**: Ask thoughtful questions to understand:
-  - What skill they want to teach and their expertise level
-  - Their target student demographic and skill level
-  - Course goals and desired student outcomes
-  - Time constraints and delivery preferences for their course
-
-2. **Consultation Phase**: Discuss and refine the teaching approach:
-  - Suggest different curriculum structures and explain trade-offs
-  - Identify prerequisites students need and potential learning obstacles
-  - Recommend resource types (practice projects, tools, communities) for students
-  - Break down complex skills into manageable modules for teaching
-
-3. **Structured Output**: Only create formal learning paths when requested or when the conversation naturally reaches that point
-
-LEARNING PATH DESIGN EXPERTISE:
-- Start with fundamentals but get students to practical application quickly
-- Include real projects that help students build portfolio-worthy work
-- Sequence skills in logical dependency order for optimal learning
-- Estimate realistic timeframes based on deliberate practice for students
-- Include checkpoints for students to assess progress and adjust course
-- Suggest communities, mentors, and accountability systems for learners
-
-WHEN TO CREATE STRUCTURED LEARNING PATHS (JSON):
-Generate a formal JSON mindmap when:
-- Course creator explicitly asks: "create a learning path", "make a mindmap", "generate the course structure"
-- Conversation reaches natural conclusion after discussing teaching goals, student timeline, and approach
-- Creator says they're ready to see the structured plan: "ok let's build this", "show me the path", "I'm ready to start"
-- You've gathered enough information to create a comprehensive, personalized curriculum for their students
-- Creator asks to modify/update an existing course structure
-- After providing a comprehensive consultation and the creator has shared their teaching goals and student needs
-- When the conversation naturally flows toward needing a structured curriculum outline
-- When you've identified the key learning modules and want to present them in a visualizable format
-- After 2-4 message exchanges when you have sufficient information about their teaching goals
-- When you've discussed the main learning objectives and want to provide a structured implementation plan
-
-BEFORE GENERATING JSON:
-- Ensure you understand their specific teaching goals and student context
-- Have discussed student timeline, difficulty preferences, and learning style
-- Identified target student skill level and background
-- Clarified what success looks like for their students
-
-JSON GENERATION TRIGGER PHRASES:
-Listen for phrases like:
-- "Let's create the course"
-- "Build me a learning path" 
-- "Show me the structured plan"
-- "Generate the mindmap"
-- "I'm ready to see the curriculum"
 
 IMPORTANT JSON GENERATION GUIDELINES:
 - Always generate complete, valid JSON structures
@@ -148,33 +102,7 @@ Then provide the JSON mindmap wrapped in \`\`\`json code blocks with this exact 
  }
 }
 
-IMPORTANT: The JSON must have this exact structure with "type": "mindmap" and the mindmap data in the "data" field. Do not include any other fields or modify the structure.
-
-CRITICAL JSON REQUIREMENTS:
-- No trailing commas after the last element in objects or arrays
-- All strings must be properly quoted with double quotes
-- No unescaped special characters in strings
-- Ensure all brackets and braces are properly closed
-- Test your JSON syntax before sending it
-- IMPORTANT: Always complete the entire JSON structure - do not truncate or cut off mid-generation
-- If the JSON is long, ensure you have enough tokens to complete it fully
-- The JSON must be syntactically valid and parseable
-
-RESPONSE STYLE:
-- Be conversational, helpful, and genuinely curious about their teaching goals
-- Ask follow-up questions to dig deeper into their course vision
-- Offer insights from educational psychology and skill acquisition research
-- Provide options rather than rigid prescriptions for course structure
-- Only generate JSON mindmaps when explicitly requested or when it serves the conversation
-
-CONVERSATION FLOW EXAMPLE:
-User: "I want to create a course teaching day trading"
-AI: "Excellent! Tell me about your target students - are they complete beginners or do they have some investing experience? What's your goal for them after completing your course?"
-[Continue conversation about goals, timeline, student background...]
-AI: "Based on what you've shared about targeting beginners who want to start part-time trading, I have a clear understanding of your needs. Let me create a structured curriculum mindmap that you can use to organize your course. This will include the key modules, learning objectives, and estimated timeframes we discussed."
-[Generate JSON mindmap]
-
-Remember: You're a curriculum consultant who creates both conversational guidance AND structured learning paths. After understanding their teaching goals and student needs (usually within 2-4 exchanges), proactively create a structured curriculum mindmap. This is a key part of your service - don't wait for them to explicitly ask. The mindmap helps them visualize and implement the curriculum you've discussed. Always include both conversational guidance AND a structured mindmap when you have enough information.`;
+IMPORTANT: The JSON must have this exact structure with "type": "mindmap" and the mindmap data in the "data" field. Do not include any other fields or modify the structure.`;
 
 // Helper function to check if JSON has balanced braces
 function isBalancedJSON(str: string): boolean {
@@ -286,6 +214,34 @@ export async function POST(request: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
+          // Get current conversation context from chat store
+          const chatStore = useChatStore.getState();
+          const context = chatStore.getContextForRouting();
+          
+          // Classify user intent using the new system
+          const intentResult = classifyUserIntent(body.message, context.hasActiveProject);
+          
+          // Route the intent to get specialized system prompt and context
+          const routeResult = routeIntent(intentResult, context.currentMindmap);
+          
+          // Update conversation context with the new intent
+          chatStore.updateConversationContext({
+            lastIntent: intentResult.intent,
+            lastAction: `intent_classified_as_${intentResult.intent}`,
+          });
+          
+          console.log('🧠 Intent Classification:', {
+            intent: intentResult.intent,
+            confidence: intentResult.confidence,
+            reasoning: intentResult.reasoning
+          });
+          
+          console.log('🛣️ Response Routing:', {
+            handler: routeResult.handler,
+            shouldUseTools: routeResult.shouldUseTools,
+            context: routeResult.context
+          });
+
           // Prepare messages for Claude with conversation context
           const messages = [];
           
@@ -302,10 +258,13 @@ export async function POST(request: NextRequest) {
             });
           }
 
+          // Combine base system prompt with intent-specific prompt
+          const finalSystemPrompt = `${BASE_SYSTEM_PROMPT}\n\n${routeResult.systemPrompt}`;
+
           const stream = await anthropic.messages.create({
             model: 'claude-3-5-sonnet-20241022',
             max_tokens: 4000,
-            system: SYSTEM_PROMPT,
+            system: finalSystemPrompt,
             messages,
             stream: true,
           });
@@ -445,6 +404,21 @@ export async function POST(request: NextRequest) {
                   
                   console.log('🎯 Detected JSON artifact:', processedArtifactData);
                   
+                  // Update conversation context when mindmap is detected
+                  if (processedArtifactData.type === 'mindmap') {
+                    try {
+                      chatStore.updateConversationContext({
+                        currentMindmap: processedArtifactData.data,
+                        conversationPhase: 'creation',
+                        hasActiveProject: true,
+                        lastAction: 'mindmap_created_via_streaming',
+                      });
+                      console.log('🔄 Updated conversation context for new mindmap');
+                    } catch (contextError) {
+                      console.error('❌ Failed to update conversation context:', contextError);
+                    }
+                  }
+                  
                   // Send artifact data
                   const artifactDataMsg = JSON.stringify({ artifact: processedArtifactData });
                   controller.enqueue(new TextEncoder().encode(`data: ${artifactDataMsg}\n\n`));
@@ -562,7 +536,22 @@ export async function POST(request: NextRequest) {
                     };
                   }
                   
-                  console.log('✅ Final JSON artifact processed:', processedArtifactData);
+                  console.log('✅ Final JSON artifact processed:', processedArtifactData );
+                  
+                  // Update conversation context when final mindmap is processed
+                  if (processedArtifactData.type === 'mindmap') {
+                    try {
+                      chatStore.updateConversationContext({
+                        currentMindmap: processedArtifactData.data,
+                        conversationPhase: 'creation',
+                        hasActiveProject: true,
+                        lastAction: 'mindmap_created_via_final',
+                      });
+                      console.log('🔄 Updated conversation context for final mindmap');
+                    } catch (contextError) {
+                      console.error('❌ Failed to update conversation context:', contextError);
+                    }
+                  }
                   
                   // Send the final artifact data
                   const artifactDataMsg = JSON.stringify({ artifact: processedArtifactData });
@@ -588,6 +577,69 @@ export async function POST(request: NextRequest) {
                 }
               } catch (error) {
                 console.error('Failed to save AI response:', error);
+              }
+
+              // Handle tool execution if routing indicated tools should be used
+              if (routeResult.shouldUseTools) {
+                try {
+                  console.log('🔧 Checking for editing commands in response...');
+                  
+                  // Import the AI prompt parser for tool execution
+                  const { aiPromptParser } = await import('@/lib/ai-prompt-parser');
+                  
+                  // Check if the response contains editing commands
+                  const hasEditingCommands = /(?:change|edit|update|modify|add|remove|delete|move|duplicate|merge)/i.test(fullMessage);
+                  
+                  if (hasEditingCommands) {
+                    console.log('🔧 Editing commands detected, executing with AI prompt parser...');
+                    
+                    // Try to parse and execute the command
+                    const commandResult = await aiPromptParser.parseAndExecute(fullMessage);
+                    
+                    if (commandResult.success) {
+                      console.log('✅ Command executed successfully:', commandResult.action);
+                      
+                      // Update conversation context based on what happened
+                      chatStore.updateContextForEditing(commandResult.action, context.currentMindmap);
+                      
+                      // Send success notification
+                      const successData = JSON.stringify({ 
+                        toolExecution: { 
+                          success: true, 
+                          action: commandResult.action,
+                          message: commandResult.message 
+                        } 
+                      });
+                      controller.enqueue(new TextEncoder().encode(`data: ${successData}\n\n`));
+                    } else {
+                      console.log('❌ Command execution failed:', commandResult.message);
+                      
+                      // Send failure notification
+                      const failureData = JSON.stringify({ 
+                        toolExecution: { 
+                          success: false, 
+                          action: 'unknown',
+                          message: commandResult.message 
+                        } 
+                      });
+                      controller.enqueue(new TextEncoder().encode(`data: ${failureData}\n\n`));
+                    }
+                  } else {
+                    console.log('🔧 No editing commands detected in response');
+                  }
+                } catch (toolError) {
+                  console.error('❌ Tool execution error:', toolError);
+                  
+                  // Send error notification
+                  const errorData = JSON.stringify({ 
+                    toolExecution: { 
+                      success: false, 
+                      action: 'error',
+                      message: 'Failed to execute editing commands' 
+                    } 
+                  });
+                  controller.enqueue(new TextEncoder().encode(`data: ${errorData}\n\n`));
+                }
               }
               
               // Send conversation ID in final response
