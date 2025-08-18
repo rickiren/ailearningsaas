@@ -223,12 +223,11 @@ function looksLikeJSON(str: string): boolean {
   const trimmed = str.trim();
   if (!trimmed.startsWith('{')) return false;
   
-  // Check if it has some key JSON elements
-  const hasQuotes = /"[^"]*"\s*:/.test(str);
-  const hasBraces = /[{}]/.test(str);
-  const hasBrackets = /[\[\]]/.test(str);
-  
-  return hasQuotes && hasBraces;
+                    // Check if it has some key JSON elements
+                  const hasQuotes = /"[^"]*"\s*:/.test(str);
+                  const hasBraces = /[{}]/.test(str);
+                  
+                  return hasQuotes && hasBraces;
 }
 
 export async function POST(request: NextRequest) {
@@ -252,11 +251,20 @@ export async function POST(request: NextRequest) {
     // Handle conversation management
     let conversationId = body.conversation_id;
     
-    // If no conversation_id, create a new conversation
+    // If no conversation_id, create a new conversation for the first message
     if (!conversationId) {
       const title = ConversationStore.generateTitle(body.message);
       const conversation = await ConversationStore.createConversation(title);
       conversationId = conversation.id;
+    } else {
+      // Verify the conversation exists if one was provided
+      const existingConversation = await ConversationStore.getConversation(conversationId);
+      if (!existingConversation) {
+        return new Response(JSON.stringify({ error: 'Conversation not found. Please start a new chat.' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     // Save user message to database

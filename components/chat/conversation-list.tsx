@@ -138,7 +138,19 @@ export function ConversationList() {
               <MessageSquare className="h-6 w-6 text-slate-400" />
             </div>
             <p className="text-sm font-medium text-slate-600 mb-1">No conversations yet</p>
-            <p className="text-xs text-slate-500">Start a new chat to begin</p>
+            <p className="text-xs text-slate-500 mb-4">Start your first chat to begin creating learning paths</p>
+            <Button
+              onClick={handleNewConversation}
+              disabled={isLoading}
+              className="h-9 px-4 gap-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 rounded-lg font-medium"
+            >
+              {isLoading ? (
+                <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              Start New Chat
+            </Button>
           </div>
         )}
       </div>

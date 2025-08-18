@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Trash2, Map, Sparkles } from 'lucide-react';
+import { Trash2, Map, Sparkles, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChatMessage } from './chat-message';
 import { ChatInput } from './chat-input';
@@ -30,7 +30,8 @@ export function ChatInterface() {
     finishStreamingMessage,
     streamingJson,
     currentConversationId,
-    createNewConversation
+    createNewConversation,
+    refreshConversations
   } = useChatStore();
   
   const { addArtifact, updateArtifact, setCurrentArtifact } = useArtifactStore();
@@ -70,6 +71,17 @@ export function ChatInterface() {
   // Handle loading a saved mindmap
   const handleLoadSavedMindmap = async (project: any) => {
     try {
+      // Check if an artifact with this title already exists
+      const existingArtifact = useArtifactStore.getState().hasArtifact(project.title, project.id);
+      
+      if (existingArtifact) {
+        // If we have an existing artifact, set it as current instead of creating a duplicate
+        console.log('✅ Found existing artifact, setting as current:', existingArtifact.id);
+        setCurrentArtifact(existingArtifact.id);
+        setShowSavedMindmaps(false);
+        return;
+      }
+      
       const mindmapData = await MindmapStore.loadMindmap(project.id);
       
       if (mindmapData) {
@@ -95,11 +107,31 @@ export function ChatInterface() {
   const handleExampleClick = async (prompt: string) => {
     if (isLoading) return;
     
+    // Check if we have a conversation selected
+    if (!currentConversationId) {
+      // Create a new conversation for the example
+      try {
+        const newConversationId = await createNewConversation();
+        if (!newConversationId) {
+          console.error('Failed to create new conversation for example');
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to create new conversation for example:', error);
+        return;
+      }
+    }
+    
     // Add user message immediately
-    addMessage({
+    const userMessageId = addMessage({
       content: prompt,
       role: 'user',
     });
+
+    if (!userMessageId) {
+      console.error('Failed to add user message');
+      return;
+    }
 
     setLoading(true);
 
@@ -108,6 +140,12 @@ export function ChatInterface() {
       content: '',
       role: 'assistant',
     });
+
+    if (!assistantMessageId) {
+      console.error('Failed to add assistant message');
+      setLoading(false);
+      return;
+    }
 
     try {
       const response = await fetch('/api/chat', {
@@ -161,6 +199,12 @@ export function ChatInterface() {
               
               if (parsed.error) {
                 throw new Error(parsed.error);
+              }
+              
+              // Handle conversation_id if returned (for new conversations)
+              if (parsed.conversation_id && !currentConversationId) {
+                // Update the current conversation ID and refresh conversations list
+                await refreshConversations(parsed.conversation_id);
               }
               
               if (parsed.content) {
@@ -299,25 +343,43 @@ export function ChatInterface() {
                 </div>
                 <h2 className="text-3xl font-bold text-slate-900">Welcome to AI Learning Path Creator</h2>
                 <p className="text-slate-600 max-w-lg text-lg leading-relaxed">
-                  Describe the skill or topic you want to teach, and I'll help you create a comprehensive learning path with modules, exercises, and resources.
+                  {currentConversationId 
+                    ? "Describe the skill or topic you want to teach, and I'll help you create a comprehensive learning path with modules, exercises, and resources."
+                    : "Click 'New Chat' in the sidebar to start creating your learning path. I'll help you design comprehensive curricula with modules, exercises, and resources."
+                  }
                 </p>
               </div>
               
-              <div className="space-y-4">
-                <p className="text-sm font-medium text-slate-700">Try these examples:</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {EXAMPLE_PROMPTS.map((prompt, index) => (
-                    <Button
-                      key={index}
-                      variant="outline"
-                      className="text-left justify-start h-auto py-4 px-5 whitespace-normal border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 transition-all duration-200 rounded-xl"
-                      onClick={() => handleExampleClick(prompt)}
-                    >
-                      {prompt}
-                    </Button>
-                  ))}
+              {currentConversationId && (
+                <div className="space-y-4">
+                  <p className="text-sm font-medium text-slate-700">Try these examples:</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {EXAMPLE_PROMPTS.map((prompt, index) => (
+                      <Button
+                        key={index}
+                        variant="outline"
+                        className="text-left justify-start h-auto py-4 px-5 whitespace-normal border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 transition-all duration-200 rounded-xl"
+                        onClick={() => handleExampleClick(prompt)}
+                      >
+                        {prompt}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
+              
+              {!currentConversationId && (
+                <div className="space-y-4">
+                  <p className="text-sm font-medium text-slate-700">Get started:</p>
+                  <Button
+                    onClick={createNewConversation}
+                    className="h-12 px-8 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl font-medium"
+                  >
+                    <Plus className="h-5 w-5 mr-2" />
+                    Start New Chat
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         ) : (

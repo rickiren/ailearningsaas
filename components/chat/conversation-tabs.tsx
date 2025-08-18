@@ -32,15 +32,18 @@ export function ConversationTabs() {
   if (conversations.length === 0) {
     return (
       <div className="flex items-center gap-2 px-6 py-3 border-b border-slate-200 bg-white/95 backdrop-blur-xl supports-[backdrop-filter]:bg-white/80">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleNewConversation}
-          className="h-9 px-4 gap-2 border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 transition-all duration-200 rounded-lg"
-        >
-          <Plus className="h-4 w-4" />
-          New Chat
-        </Button>
+        <div className="flex-1 text-center">
+          <p className="text-sm text-slate-600 mb-2">No conversations yet</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleNewConversation}
+            className="h-9 px-4 gap-2 border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 transition-all duration-200 rounded-lg"
+          >
+            <Plus className="h-4 w-4" />
+            Start New Chat
+          </Button>
+        </div>
       </div>
     );
   }

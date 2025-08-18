@@ -57,6 +57,17 @@ export function ArtifactViewer() {
   // Handle loading a saved mindmap
   const handleLoadSavedMindmap = async (project: any) => {
     try {
+      // Check if an artifact with this title already exists
+      const existingArtifact = useArtifactStore.getState().hasArtifact(project.title, project.id);
+      
+      if (existingArtifact) {
+        // If we have an existing artifact, set it as current instead of creating a duplicate
+        console.log('✅ Found existing artifact, setting as current:', existingArtifact.id);
+        setCurrentArtifact(existingArtifact.id);
+        setShowSavedMindmaps(false);
+        return;
+      }
+      
       const mindmapData = await MindmapStore.loadMindmap(project.id);
       
       if (mindmapData) {

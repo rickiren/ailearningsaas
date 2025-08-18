@@ -94,13 +94,31 @@ export function ChatSidebar() {
                 <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
                   <Sparkles className="h-8 w-8 text-white" />
                 </div>
-                <h3 className="font-bold text-slate-900 mb-2 text-lg">Start Creating</h3>
+                <h3 className="font-bold text-slate-900 mb-2 text-lg">
+                  {currentConversationId ? 'Start Creating' : 'Start a New Chat'}
+                </h3>
                 <p className="text-sm text-slate-600 max-w-xs mx-auto leading-relaxed">
-                  Describe what you want to teach and I'll help you build it
+                  {currentConversationId 
+                    ? "Describe what you want to teach and I'll help you build it"
+                    : "Click 'New Chat' above to begin creating your learning path"
+                  }
                 </p>
               </div>
               
-              
+              {!currentConversationId && (
+                <div className="text-center">
+                  <Button
+                    onClick={() => {
+                      // This will be handled by the conversation tabs component
+                      // We just need to trigger a re-render
+                    }}
+                    className="h-10 px-6 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl font-medium"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    New Chat
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         ) : (

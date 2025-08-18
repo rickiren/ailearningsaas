@@ -23,7 +23,7 @@ export interface ChatState {
   conversations: Conversation[];
   isLoading: boolean;
   error: string | null;
-  addMessage: (message: Omit<Message, 'id' | 'timestamp'>) => string;
+  addMessage: (message: Omit<Message, 'id' | 'timestamp'>) => string | null;
   setCurrentConversation: (conversationId: string | null) => void;
   loadConversation: (conversationId: string) => Promise<void>;
   createNewConversation: () => Promise<string>;

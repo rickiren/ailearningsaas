@@ -16,7 +16,8 @@ export function ChatInput() {
     isLoading, 
     updateStreamingMessage, 
     finishStreamingMessage,
-    currentConversationId
+    currentConversationId,
+    refreshConversations
   } = useChatStore();
 
   const { addArtifact, setCurrentArtifact, updateArtifact } = useArtifactStore();
@@ -45,11 +46,22 @@ export function ChatInput() {
     setInputHeight(48); // Reset height
     setError(null);
     
+    // Check if we have a conversation selected
+    if (!currentConversationId) {
+      setError('Please start a new chat first by clicking the "New Chat" button.');
+      return;
+    }
+    
     // Add user message immediately
-    addMessage({
+    const userMessageId = addMessage({
       content: userMessage,
       role: 'user',
     });
+
+    if (!userMessageId) {
+      setError('Failed to add message. Please try starting a new chat.');
+      return;
+    }
 
     // Check if this is an editing command first
     if (isEditingCommand(userMessage)) {
@@ -64,6 +76,12 @@ export function ChatInput() {
       content: '',
       role: 'assistant',
     });
+
+    if (!assistantMessageId) {
+      setError('Failed to add assistant message. Please try starting a new chat.');
+      setLoading(false);
+      return;
+    }
 
     try {
       const response = await fetch('/api/chat', {
@@ -127,6 +145,12 @@ export function ChatInput() {
               
               if (parsed.error) {
                 throw new Error(parsed.error);
+              }
+              
+              // Handle conversation_id if returned (for new conversations)
+              if (parsed.conversation_id && !currentConversationId) {
+                // Update the current conversation ID and refresh conversations list
+                await refreshConversations(parsed.conversation_id);
               }
               
               if (parsed.content) {
@@ -216,6 +240,11 @@ export function ChatInput() {
         role: 'assistant',
       });
 
+      if (!assistantMessageId) {
+        setError('Failed to add assistant message. Please try starting a new chat.');
+        return;
+      }
+
       // Parse and execute the command
       const result = await parseAndExecuteAICommand(message);
       
@@ -232,10 +261,14 @@ export function ChatInput() {
       console.error('Error handling editing command:', error);
       
       // Add error message
-      addMessage({
+      const errorMessageId = addMessage({
         content: `Sorry, I encountered an error while processing your editing request: ${error instanceof Error ? error.message : 'Unknown error'}`,
         role: 'assistant',
       });
+
+      if (!errorMessageId) {
+        setError('Failed to add error message. Please try starting a new chat.');
+      }
     }
   };
 
@@ -269,19 +302,30 @@ export function ChatInput() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyPress}
-              placeholder={isLoading ? "AI is generating your learning path..." : "Ask me about creating learning paths..."}
-              disabled={isLoading}
+              placeholder={
+                !currentConversationId 
+                  ? "Start a new chat to begin..." 
+                  : isLoading 
+                    ? "AI is generating your learning path..." 
+                    : "Ask me about creating learning paths..."
+              }
+              disabled={isLoading || !currentConversationId}
               style={{ height: `${inputHeight}px` }}
-              className="flex-1 pl-14 pr-20 py-3 rounded-2xl border-2 border-slate-200 bg-white shadow-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-300 placeholder:text-slate-400 text-slate-700 resize-none overflow-hidden leading-6"
+              className={`flex-1 pl-14 pr-20 py-3 rounded-2xl border-2 bg-white shadow-sm focus:ring-4 focus:ring-blue-100 transition-all duration-300 placeholder:text-slate-400 text-slate-700 resize-none overflow-hidden leading-6 ${
+                !currentConversationId 
+                  ? 'border-slate-300 bg-slate-50 cursor-not-allowed' 
+                  : 'border-slate-200 focus:border-blue-500'
+              }`}
               rows={1}
             />
             
             {/* Send Button */}
             <Button 
               onClick={sendMessage} 
-              disabled={!input.trim() || isLoading}
+              disabled={!input.trim() || isLoading || !currentConversationId}
               size="sm"
               className="absolute right-2 bottom-2 h-8 w-8 p-0 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
+              title={!currentConversationId ? "Start a new chat first" : "Send message"}
             >
               {isLoading ? (
                 <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -311,7 +355,10 @@ export function ChatInput() {
           <div className="mt-3 text-center">
             <p className="text-xs text-slate-500 flex items-center justify-center gap-1.5">
               <Sparkles className="h-3 w-3 text-blue-400" />
-              Press Enter to send, Shift+Enter for new line
+              {!currentConversationId 
+                ? "Click 'New Chat' to begin creating learning paths"
+                : "Press Enter to send, Shift+Enter for new line"
+              }
             </p>
           </div>
         </div>

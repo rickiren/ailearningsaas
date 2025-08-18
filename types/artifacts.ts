@@ -102,6 +102,7 @@ export interface ArtifactState {
   clearStreamingData: () => void;
   loadMindmapFromDatabase: (projectId: string) => Promise<string | null>;
   getSavedMindmaps: () => Promise<any[]>;
+  hasArtifact: (title: string, projectId?: string) => Artifact | undefined;
   cleanupDuplicates: () => Promise<number>;
   addModuleToMindmap: (parentId: string | null, newModule: any) => Promise<boolean>;
 }

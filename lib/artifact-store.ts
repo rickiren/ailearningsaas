@@ -215,10 +215,26 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
     try {
       const mindmapData = await MindmapStore.loadMindmap(projectId);
       if (mindmapData) {
+        // Get project details to get the actual title
+        const projects = await MindmapStore.getUserMindmaps();
+        const project = projects.find(p => p.id === projectId);
+        const projectTitle = project?.title || 'Unknown Project';
+        
+        // Check if an artifact with this title already exists
+        const existingArtifact = get().hasArtifact(projectTitle, projectId);
+        
+        if (existingArtifact) {
+          // If we have an existing artifact, set it as current instead of creating a duplicate
+          console.log('✅ Found existing artifact, setting as current:', existingArtifact.id);
+          set({ currentArtifact: existingArtifact });
+          return existingArtifact.id;
+        }
+        
+        // Create new artifact only if none exists
         const artifact: Artifact = {
           id: crypto.randomUUID(),
           type: 'mindmap',
-          title: 'Loaded Mindmap', // You might want to get this from the project
+          title: projectTitle,
           data: mindmapData,
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -247,6 +263,29 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
       console.error('Failed to get saved mindmaps:', error);
       return [];
     }
+  },
+
+  // Check if an artifact with the given title or project ID already exists
+  hasArtifact: (title: string, projectId?: string) => {
+    const { artifacts } = get();
+    const existing = artifacts.find(
+      artifact => artifact.type === 'mindmap' && 
+      (artifact.title === title || (projectId && artifact.metadata?.projectId === projectId))
+    );
+    
+    if (existing) {
+      console.log('🔍 Found existing artifact:', {
+        id: existing.id,
+        title: existing.title,
+        projectId: existing.metadata?.projectId,
+        searchTitle: title,
+        searchProjectId: projectId
+      });
+    } else {
+      console.log('🔍 No existing artifact found for:', { title, projectId });
+    }
+    
+    return existing;
   },
 
   // Clean up duplicate artifacts and database entries

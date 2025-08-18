@@ -92,6 +92,15 @@ export class MindmapStore {
             projectId: existingProject.id,
             skillAtomIds
           };
+        } else {
+          // Project exists but is older - this might be intentional reuse
+          // Check if the content is significantly different
+          console.log('⚠️ Older project with same title exists, checking if update is needed');
+          
+          // For now, we'll create a new project to avoid overwriting existing work
+          // In the future, we could implement content comparison logic here
+          console.log('ℹ️ Creating new project with modified title to avoid conflicts');
+          title = `${title} (${new Date().toLocaleDateString()})`;
         }
       }
       

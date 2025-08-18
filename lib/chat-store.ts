@@ -21,6 +21,7 @@ interface ExtendedChatState extends ChatState {
   createNewConversation: () => Promise<string>;
   loadConversations: () => Promise<void>;
   deleteConversation: (conversationId: string) => Promise<void>;
+  refreshConversations: (newConversationId?: string) => Promise<void>;
 }
 
 export const useChatStore = create<ExtendedChatState>((set, get) => ({
@@ -33,6 +34,12 @@ export const useChatStore = create<ExtendedChatState>((set, get) => ({
   streamingJson: null,
 
   addMessage: (messageData) => {
+    // Don't add messages if no conversation is selected
+    if (!get().currentConversationId) {
+      console.warn('Cannot add message: no conversation selected');
+      return null;
+    }
+
     const message: Message = {
       ...messageData,
       id: crypto.randomUUID(),
@@ -111,6 +118,38 @@ export const useChatStore = create<ExtendedChatState>((set, get) => ({
 
   setCurrentConversation: (conversationId) => {
     set({ currentConversationId: conversationId });
+  },
+
+  // Refresh conversations list and optionally set a new conversation
+  refreshConversations: async (newConversationId?: string) => {
+    try {
+      const conversations = await ConversationStore.getConversations();
+      
+      // Filter out drill-related conversations
+      const learningPathConversations = conversations.filter(conv => {
+        if (conv.metadata?.type === 'drill_chat') {
+          return false;
+        }
+        if (conv.metadata?.drillId) {
+          return false;
+        }
+        const title = conv.title.toLowerCase();
+        const drillKeywords = ['drill', 'exercise', 'practice', 'quiz', 'test'];
+        if (drillKeywords.some(keyword => title.includes(keyword))) {
+          return false;
+        }
+        return true;
+      });
+      
+      set({ conversations: learningPathConversations });
+      
+      // If a new conversation ID was provided, set it as current
+      if (newConversationId) {
+        set({ currentConversationId: newConversationId });
+      }
+    } catch (error) {
+      console.error('Failed to refresh conversations:', error);
+    }
   },
 
   loadConversation: async (conversationId: string) => {
@@ -219,6 +258,30 @@ export const useChatStore = create<ExtendedChatState>((set, get) => ({
       });
       
       set({ conversations: learningPathConversations });
+
+      // Auto-select the first conversation if none is currently selected and conversations exist
+      if (!get().currentConversationId && learningPathConversations.length > 0) {
+        const firstConversation = learningPathConversations[0];
+        set({ currentConversationId: firstConversation.id });
+        
+        // Load the first conversation's messages
+        try {
+          const messages = await ConversationStore.getRecentMessages(firstConversation.id, 30);
+          const localMessages: Message[] = messages.map(msg => ({
+            id: msg.id,
+            content: msg.content,
+            role: msg.role,
+            timestamp: new Date(msg.created_at),
+            conversation_id: firstConversation.id, // Use the current conversation ID
+            metadata: msg.metadata,
+            artifact_data: msg.artifact_data,
+          }));
+          
+          set({ messages: localMessages });
+        } catch (error) {
+          console.error('Failed to load first conversation messages:', error);
+        }
+      }
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to load conversations' });
     } finally {
