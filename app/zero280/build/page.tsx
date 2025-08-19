@@ -8,6 +8,7 @@ import { ToolExecutionProgress } from '@/components/chat/tool-execution-progress
 import { ProgressSummary } from '@/components/chat/progress-summary';
 import { CodeStreamingPreview } from '@/components/chat/code-streaming-preview';
 import { Zero280ArtifactRenderer } from '@/components/artifacts/zero280-artifact-renderer';
+import { ConversationManager } from '@/components/chat/conversation-manager';
 import { useProgressTracker, progressHelpers } from '@/lib/progress-tracker';
 
 interface Artifact {
@@ -43,6 +44,8 @@ export default function Zero280BuildPage() {
     artifacts?: Artifact[];
     toolResults?: ToolResult[];
   }>>([]);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [hasInitialized, setHasInitialized] = useState(false);
   
   // Code streaming state
   const [isStreamingCode, setIsStreamingCode] = useState(false);
@@ -69,7 +72,24 @@ export default function Zero280BuildPage() {
   
   useEffect(() => {
     const message = searchParams.get('message');
-    if (message) {
+    const conversationId = searchParams.get('conversationId');
+    const artifactId = searchParams.get('artifactId');
+    
+    if (hasInitialized) {
+      return; // Prevent re-initialization on refresh
+    }
+    
+    if (artifactId) {
+      // Load artifact and its associated conversation
+      loadArtifactAndConversation(artifactId);
+      setHasInitialized(true);
+    } else if (conversationId) {
+      // We have an existing conversation, load it instead of creating new
+      setCurrentConversationId(conversationId);
+      loadExistingConversation(conversationId);
+      setHasInitialized(true);
+    } else if (message && !currentConversationId) {
+      // Only create new conversation if we don't have one and have a message
       const timestamp = new Date().toLocaleTimeString('en-US', { 
         hour: 'numeric', 
         minute: '2-digit',
@@ -79,6 +99,7 @@ export default function Zero280BuildPage() {
         day: 'numeric' 
       });
       
+      // Set initial chat history with just the user message
       setChatHistory([
         {
           type: 'user',
@@ -88,17 +109,122 @@ export default function Zero280BuildPage() {
         }
       ]);
       
+      // Set hasInitialized immediately to prevent duplicate processing
+      setHasInitialized(true);
+      
       // Automatically send the initial message to AI
       handleInitialMessage(message);
     }
-  }, [searchParams]);
+  }, [searchParams, hasInitialized, currentConversationId]); // Add currentConversationId dependency
 
   // Debug effect for artifacts
   useEffect(() => {
     console.log('Current artifacts changed:', currentArtifacts);
   }, [currentArtifacts]);
 
+  const loadExistingConversation = async (conversationId: string) => {
+    try {
+      // Load conversation data from the database
+      const response = await fetch(`/api/conversations/${conversationId}`);
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Load messages
+        const messagesResponse = await fetch(`/api/conversations/${conversationId}/messages`);
+        if (messagesResponse.ok) {
+          const messagesData = await messagesResponse.json();
+          const formattedMessages = messagesData.messages.map((msg: any) => ({
+            type: msg.role === 'user' ? 'user' : 'ai',
+            message: msg.content,
+            timestamp: new Date(msg.created_at).toLocaleTimeString('en-US', { 
+              hour: 'numeric', 
+              minute: '2-digit',
+              hour12: true 
+            }) + ' on ' + new Date(msg.created_at).toLocaleDateString('en-US', { 
+              month: 'short', 
+              day: 'numeric' 
+            }),
+            id: msg.id
+          }));
+          setChatHistory(formattedMessages);
+        }
+        
+        // Load artifacts
+        const artifactsResponse = await fetch(`/api/artifacts?conversationId=${conversationId}`);
+        if (artifactsResponse.ok) {
+          const artifactsData = await artifactsResponse.json();
+          // Transform artifacts to match the expected structure
+          const transformedArtifacts = (artifactsData.artifacts || []).map((artifact: any) => ({
+            name: artifact.metadata?.title || artifact.name || 'Untitled',
+            type: artifact.metadata?.type || artifact.type || 'unknown',
+            content: artifact.data || artifact.content || '',
+            description: artifact.metadata?.description || artifact.description || '',
+            preview: artifact.metadata?.preview || artifact.preview || '',
+            metadata: artifact.metadata,
+            data: artifact.data
+          }));
+          setCurrentArtifacts(transformedArtifacts);
+        }
+        
+        console.log('Loaded existing conversation:', conversationId);
+      }
+    } catch (error) {
+      console.error('Error loading existing conversation:', error);
+    }
+  };
+
+  const loadArtifactAndConversation = async (artifactId: string) => {
+    try {
+      // Load the artifact first
+      const artifactResponse = await fetch(`/api/artifacts/${artifactId}`);
+      if (artifactResponse.ok) {
+        const artifact = await artifactResponse.json();
+        
+        // Transform and set the current artifacts to include this one
+        const transformedArtifact = {
+          name: artifact.metadata?.title || artifact.name || 'Untitled',
+          type: artifact.metadata?.type || artifact.type || 'unknown',
+          content: artifact.data || artifact.content || '',
+          description: artifact.metadata?.description || artifact.description || '',
+          preview: artifact.metadata?.preview || artifact.preview || '',
+          metadata: artifact.metadata,
+          data: artifact.data
+        };
+        setCurrentArtifacts([transformedArtifact]);
+        
+        // Try to find the associated conversation through the artifact's metadata
+        if (artifact.metadata?.conversationId) {
+          setCurrentConversationId(artifact.metadata.conversationId);
+          await loadExistingConversation(artifact.metadata.conversationId);
+        } else {
+          // If no conversation ID in metadata, try to find by project ID
+          if (artifact.metadata?.projectId) {
+            const conversationsResponse = await fetch(`/api/conversations?projectId=${artifact.metadata.projectId}`);
+            if (conversationsResponse.ok) {
+              const conversations = await conversationsResponse.json();
+              if (conversations.length > 0) {
+                const conversation = conversations[0]; // Take the first one
+                setCurrentConversationId(conversation.id);
+                await loadExistingConversation(conversation.id);
+              }
+            }
+          }
+        }
+        
+        console.log('Loaded artifact and conversation:', artifactId);
+      }
+    } catch (error) {
+      console.error('Error loading artifact and conversation:', error);
+    }
+  };
+
   const handleInitialMessage = async (message: string) => {
+    // Don't send initial message if we already have a conversation
+    if (currentConversationId) {
+      console.log('Conversation already exists, skipping initial message');
+      return;
+    }
+    
     setIsLoading(true);
     
     // Start progress tracking
@@ -106,14 +232,7 @@ export default function Zero280BuildPage() {
     startMessageExecution(messageId);
     startThinking(messageId, "Analyzing your request...");
     
-    // Simulate building progress after thinking
-    setTimeout(() => {
-      if (isThinking) {
-        progressHelpers.simulateArtifactCreation('component', 3000);
-      }
-    }, 2000); // Start building after 2 seconds of thinking
-    
-    // Add AI thinking message
+    // Add AI thinking message immediately
     const newAIMessage = {
       type: 'ai' as const,
       message: 'Thinking...',
@@ -139,6 +258,7 @@ export default function Zero280BuildPage() {
         },
         body: JSON.stringify({
           message: message,
+          userId: undefined, // You can add user authentication later
         }),
       });
 
@@ -148,10 +268,30 @@ export default function Zero280BuildPage() {
         console.log('Response data received (initial):', data);
         console.log('Artifacts received (initial):', data.artifacts);
         
+        // Store conversation ID for future requests
+        if (data.conversationId) {
+          setCurrentConversationId(data.conversationId);
+          console.log('Conversation ID set:', data.conversationId);
+          
+          // Update URL to include conversation ID for refresh persistence
+          const newUrl = `/zero280/build?conversationId=${data.conversationId}`;
+          window.history.replaceState({}, '', newUrl);
+        }
+        
         // Update artifacts if any were created
         if (data.artifacts && data.artifacts.length > 0) {
           console.log('Setting artifacts (initial):', data.artifacts);
-          setCurrentArtifacts(data.artifacts);
+          // Transform artifacts to match the expected structure
+          const transformedArtifacts = data.artifacts.map((artifact: any) => ({
+            name: artifact.metadata?.title || artifact.name || 'Untitled',
+            type: artifact.metadata?.type || artifact.type || 'unknown',
+            content: artifact.data || artifact.content || '',
+            description: artifact.metadata?.description || artifact.description || '',
+            preview: artifact.metadata?.preview || artifact.preview || '',
+            metadata: artifact.metadata,
+            data: artifact.data
+          }));
+          setCurrentArtifacts(transformedArtifacts);
         } else {
           console.log('No artifacts in response (initial)');
         }
@@ -170,9 +310,10 @@ export default function Zero280BuildPage() {
             : msg
         ));
         
-        // Start building progress simulation
+        // Handle streaming for new artifacts (initial creation only)
         if (data.artifacts && data.artifacts.length > 0) {
-          // Simulate building process
+          // This is initial artifact creation
+          console.log('Streaming initial artifact');
           const artifact = data.artifacts[0];
           setStreamingArtifact(artifact);
           setIsStreamingCode(true);
@@ -190,11 +331,10 @@ export default function Zero280BuildPage() {
             } else {
               clearInterval(streamInterval);
               setIsStreamingCode(false);
-              // Complete progress tracking after streaming
               stopThinking();
               completeMessageExecution();
             }
-          }, 100); // Stream one line every 100ms
+          }, 100);
         } else {
           // Complete progress tracking
           stopThinking();
@@ -269,6 +409,12 @@ export default function Zero280BuildPage() {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
+    // Don't allow sending messages if we don't have a conversation
+    if (!currentConversationId) {
+      console.error('No active conversation to send message to');
+      return;
+    }
+
     const userMessage = input.trim();
     setInput('');
     setIsLoading(true);
@@ -305,14 +451,27 @@ export default function Zero280BuildPage() {
     setChatHistory(prev => [...prev, newUserMessage, newAIMessage]);
 
     try {
-      const response = await fetch('/api/zero280', {
+      // If we have an existing artifact, use the edit endpoint
+      // If not, use the create endpoint
+      const endpoint = currentArtifacts.length > 0 ? '/api/zero280/edit' : '/api/zero280';
+      const requestBody = currentArtifacts.length > 0 ? {
+        message: userMessage,
+        conversationId: currentConversationId,
+        artifactId: currentArtifacts[0].name || 'current-artifact',
+        currentCode: currentArtifacts[0].content || '',
+        userId: undefined,
+      } : {
+        message: userMessage,
+        conversationId: currentConversationId,
+        userId: undefined,
+      };
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          message: userMessage,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (response.ok) {
@@ -321,12 +480,44 @@ export default function Zero280BuildPage() {
         console.log('Response data received (submit):', data);
         console.log('Artifacts received (submit):', data.artifacts);
         
-        // Update artifacts if any were created
-        if (data.artifacts && data.artifacts.length > 0) {
-          console.log('Setting artifacts (submit):', data.artifacts);
+        // Store conversation ID for future requests
+        if (data.conversationId) {
+          setCurrentConversationId(data.conversationId);
+          console.log('Conversation ID set:', data.conversationId);
+          
+          // Update URL to include conversation ID for refresh persistence
+          const newUrl = `/zero280/build?conversationId=${data.conversationId}`;
+          window.history.replaceState({}, '', newUrl);
+        }
+        
+        // Handle edit response - update existing artifact instead of creating new ones
+        if (data.editedCode && currentArtifacts.length > 0) {
+          console.log('Updating existing artifact with edited code');
+          // Update the existing artifact with the edited code
+          const updatedArtifacts = currentArtifacts.map(artifact => ({
+            ...artifact,
+            content: data.editedCode,
+            // Update timestamp to show it was modified
+            lastModified: new Date().toISOString()
+          }));
+          setCurrentArtifacts(updatedArtifacts);
+          
+          // Also update the streaming artifact if it exists
+          if (streamingArtifact) {
+            setStreamingArtifact({
+              ...streamingArtifact,
+              content: data.editedCode
+            });
+          }
+          
+          // Update streamed content for display
+          setStreamedContent(data.editedCode);
+        } else if (data.artifacts && data.artifacts.length > 0) {
+          // This is a new artifact creation (first time)
+          console.log('Setting new artifacts (submit):', data.artifacts);
           setCurrentArtifacts(data.artifacts);
         } else {
-          console.log('No artifacts in response (submit)');
+          console.log('No artifacts or edits in response (submit)');
         }
         
         // Update the AI message with the actual response
@@ -343,16 +534,16 @@ export default function Zero280BuildPage() {
             : msg
         ));
         
-        // Start building progress simulation
-        if (data.artifacts && data.artifacts.length > 0) {
-          // Simulate building process
-          const artifact = data.artifacts[0];
-          setStreamingArtifact(artifact);
+        // Handle streaming for new artifacts or edits
+        if (data.editedCode && currentArtifacts.length > 0) {
+          // This is an edit - stream the edited code
+          console.log('Streaming edited code');
+          setStreamingArtifact(currentArtifacts[0]);
           setIsStreamingCode(true);
           setStreamedContent('');
           
-          // Simulate code streaming
-          const content = artifact.content;
+          // Stream the edited code
+          const content = data.editedCode;
           const lines = content.split('\n');
           let currentLine = 0;
           
@@ -363,11 +554,34 @@ export default function Zero280BuildPage() {
             } else {
               clearInterval(streamInterval);
               setIsStreamingCode(false);
-              // Complete progress tracking after streaming
               stopThinking();
               completeMessageExecution();
             }
-          }, 100); // Stream one line every 100ms
+          }, 100);
+        } else if (data.artifacts && data.artifacts.length > 0) {
+          // This is a new artifact creation (first time)
+          console.log('Streaming new artifact');
+          const artifact = data.artifacts[0];
+          setStreamingArtifact(artifact);
+          setIsStreamingCode(true);
+          setStreamedContent('');
+          
+          // Simulate code streaming
+          const content = artifact.content;
+          const lines = content.split('\n');
+          let currentLine = 1;
+          
+          const streamInterval = setInterval(() => {
+            if (currentLine < lines.length) {
+              setStreamedContent(prev => prev + lines[currentLine] + '\n');
+              currentLine++;
+            } else {
+              clearInterval(streamInterval);
+              setIsStreamingCode(false);
+              stopThinking();
+              completeMessageExecution();
+            }
+          }, 100);
         } else {
           // Complete progress tracking
           stopThinking();
@@ -424,7 +638,13 @@ export default function Zero280BuildPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </div>
-            <div className="text-sm text-gray-500">Loading Live Preview...</div>
+            <div className="text-sm text-gray-500">
+              {currentConversationId ? (
+                <span className="text-blue-600">Conversation: {currentConversationId.substring(0, 8)}...</span>
+              ) : (
+                'Loading Live Preview...'
+              )}
+            </div>
           </div>
           
           <div className="flex items-center space-x-3">
@@ -465,11 +685,19 @@ export default function Zero280BuildPage() {
       <div className="flex-1 flex">
         {/* Left Column - Chat Interface */}
         <div 
-          className="bg-gray-100 flex flex-col"
+          className="bg-gray-100 flex flex-col h-full"
           style={{ width: `${chatWidth}px` }}
         >
-          {/* Chat History */}
-          <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+          {/* Conversation Manager */}
+          <div className="border-b border-gray-200">
+            <ConversationManager
+              currentConversationId={currentConversationId || undefined}
+              userId={undefined} // You can add user authentication later
+            />
+          </div>
+
+          {/* Chat History - Scrollable Area */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 chat-sidebar">
             {chatHistory.map((chat, index) => (
               <div key={index} className={`flex ${chat.type === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {chat.type === 'user' ? (
@@ -512,8 +740,10 @@ export default function Zero280BuildPage() {
             {/* Progress Indicators */}
             {isThinking && (
               <ThinkingIndicator 
-                isThinking={isThinking} 
-                message={thinkingMessage}
+                thinking={{
+                  status: 'active',
+                  message: thinkingMessage
+                }}
                 className="mb-4"
               />
             )}
@@ -533,20 +763,21 @@ export default function Zero280BuildPage() {
               />
             )}
             
-            {/* Code Streaming Preview */}
-            {isStreamingCode && streamingArtifact && (
+            {/* Code Streaming Preview - Show when streaming or when complete */}
+            {streamingArtifact && (
               <CodeStreamingPreview
                 artifactName={streamingArtifact.name}
                 artifactType={streamingArtifact.type}
                 isStreaming={isStreamingCode}
                 streamedContent={streamedContent}
+                finalContent={streamedContent} // Pass the final content when streaming is complete
                 className="mb-4"
               />
             )}
           </div>
 
-          {/* Chat Input */}
-          <div className="p-4 border-t border-gray-200">
+          {/* Chat Input - Fixed at Bottom */}
+          <div className="flex-shrink-0 p-4 border-t border-gray-200 bg-gray-100 chat-input-container">
             <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-4">
               {/* Text Input Area */}
               <div className="mb-4">
@@ -620,17 +851,18 @@ export default function Zero280BuildPage() {
                   <h2 className="text-2xl font-bold text-gray-900 mb-2">Live Preview</h2>
                   <p className="text-gray-600">Your generated components and content appear here</p>
                   <div className="text-sm text-gray-500">
-                    Debug: {currentArtifacts.length} artifacts loaded
+                    Working on: {currentArtifacts[0]?.name || 'Current Artifact'}
                   </div>
                 </div>
                 
-                {currentArtifacts.map((artifact, index) => (
+                {/* Only show the current working artifact - never multiple */}
+                {currentArtifacts.length > 0 && (
                   <Zero280ArtifactRenderer 
-                    key={index} 
-                    artifact={artifact} 
+                    key={currentArtifacts[0].name || 'current-artifact'}
+                    artifact={currentArtifacts[0]} 
                     className="mb-8"
                   />
-                ))}
+                )}
               </div>
             ) : (
               /* Default Preview State */

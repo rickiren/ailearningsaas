@@ -4,11 +4,18 @@ import { useState, useEffect } from 'react';
 import { Copy, Code, Eye, Download, ExternalLink } from 'lucide-react';
 
 interface Zero280Artifact {
-  name: string;
-  type: string;
-  content: string;
-  description: string;
-  preview: string;
+  name?: string;
+  type?: string;
+  content?: string;
+  description?: string;
+  preview?: string;
+  // Support for both old and new artifact structures
+  metadata?: {
+    title?: string;
+    type?: string;
+    description?: string;
+  };
+  data?: any;
 }
 
 interface Zero280ArtifactRendererProps {
@@ -22,38 +29,53 @@ export function Zero280ArtifactRenderer({ artifact, className = '' }: Zero280Art
   const [renderedContent, setRenderedContent] = useState<React.ReactNode>(null);
 
   useEffect(() => {
+    // Get artifact properties with fallbacks for different structures
+    const artifactName = artifact.name || artifact.metadata?.title || 'Untitled';
+    const artifactType = artifact.type || artifact.metadata?.type || 'unknown';
+    const artifactContent = artifact.content || artifact.data || '';
+    const artifactDescription = artifact.description || artifact.metadata?.description || '';
+    
     // Render the artifact content based on type
-    if (artifact.type === 'html') {
+    if (artifactType === 'html') {
       setRenderedContent(
         <div className="w-full h-full">
           <iframe
-            srcDoc={artifact.content}
+            srcDoc={artifactContent}
             className="w-full border rounded"
             style={{ height: '500px', minHeight: '400px' }}
-            title={`Preview of ${artifact.name}`}
+            title={`Preview of ${artifactName}`}
             sandbox="allow-scripts allow-same-origin"
           />
         </div>
       );
-    } else if (artifact.type === 'component' || artifact.type === 'react') {
-      // For React components, we'll show the code and a note about rendering
+    } else if (artifactType === 'component' || artifactType === 'react') {
+      // For React components, show the code prominently
       setRenderedContent(
-        <div className="text-center py-8">
-          <div className="text-gray-500 mb-4">
-            <Code className="w-12 h-12 mx-auto mb-2" />
-            <p>React Component: {artifact.name}</p>
-            <p className="text-sm">{artifact.description}</p>
+        <div className="w-full">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">React Component: {artifactName}</h3>
+            {artifactDescription && (
+              <p className="text-gray-600 mb-4">{artifactDescription}</p>
+            )}
           </div>
-          <div className="bg-gray-100 rounded p-3 text-sm text-gray-600 font-mono text-left overflow-auto max-h-64">
-            <pre>{artifact.content}</pre>
+          <div className="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-auto max-h-96">
+            <pre className="text-sm font-mono">{artifactContent}</pre>
           </div>
         </div>
       );
     } else {
       // For other types, show the content as code
       setRenderedContent(
-        <div className="bg-gray-100 rounded p-3 text-sm text-gray-600 font-mono overflow-auto max-h-64">
-          <pre>{artifact.content}</pre>
+        <div className="w-full">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">{artifactName}</h3>
+            {artifactDescription && (
+              <p className="text-gray-600 mb-4">{artifactDescription}</p>
+            )}
+          </div>
+          <div className="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-auto max-h-96">
+            <pre className="text-sm font-mono">{artifactContent}</pre>
+          </div>
         </div>
       );
     }
@@ -61,7 +83,8 @@ export function Zero280ArtifactRenderer({ artifact, className = '' }: Zero280Art
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(artifact.content);
+      const content = artifact.content || artifact.data || '';
+      await navigator.clipboard.writeText(content);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {
@@ -70,13 +93,17 @@ export function Zero280ArtifactRenderer({ artifact, className = '' }: Zero280Art
   };
 
   const handleDownload = () => {
-    const extension = artifact.type === 'html' ? 'html' : 
-                     artifact.type === 'component' || artifact.type === 'react' ? 'tsx' : 'txt';
-    const blob = new Blob([artifact.content], { type: 'text/plain' });
+    const artifactName = artifact.name || artifact.metadata?.title || 'untitled';
+    const artifactType = artifact.type || artifact.metadata?.type || 'txt';
+    const content = artifact.content || artifact.data || '';
+    
+    const extension = artifactType === 'html' ? 'html' : 
+                     artifactType === 'component' || artifactType === 'react' ? 'tsx' : 'txt';
+    const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${artifact.name}.${extension}`;
+    a.download = `${artifactName}.${extension}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -90,9 +117,11 @@ export function Zero280ArtifactRenderer({ artifact, className = '' }: Zero280Art
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <span className="font-medium text-gray-900">{artifact.name}</span>
+              <span className="font-medium text-gray-900">
+                {artifact.name || artifact.metadata?.title || 'Untitled'}
+              </span>
               <span className="text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded">
-                {artifact.type}
+                {artifact.type || artifact.metadata?.type || 'unknown'}
               </span>
             </div>
           </div>

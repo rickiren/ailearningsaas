@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 import { contextAwarenessServer } from '@/lib/context-awareness-server';
 import { multiToolExecutor, WorkflowType } from '@/lib/multi-tool-executor';
 import { naturalLanguageUnderstanding } from '@/lib/natural-language-understanding';
+import { ChatService } from '@/lib/chat-service';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -73,7 +74,7 @@ const TOOLS = [
 
 export async function POST(request: NextRequest) {
   try {
-    const { message } = await request.json();
+    const { message, conversationId, userId } = await request.json();
 
     if (!message) {
       return new Response(JSON.stringify({ error: 'Message is required' }), {
@@ -81,6 +82,30 @@ export async function POST(request: NextRequest) {
         headers: { 'Content-Type': 'application/json' },
       });
     }
+
+    // If no conversationId, create a new conversation
+    let currentConversationId = conversationId;
+    if (!currentConversationId) {
+      const chatSession = await ChatService.createChatSession(message, userId);
+      if (chatSession.conversation) {
+        currentConversationId = chatSession.conversation.id;
+      } else {
+        return new Response(JSON.stringify({ error: 'Failed to create conversation' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // Add user message to conversation
+    await ChatService.addMessage(currentConversationId, {
+      role: 'user',
+      content: message,
+      metadata: {
+        type: 'user_request',
+        timestamp: new Date().toISOString()
+      }
+    });
 
     // Simple check for build requests
     const isBuildRequest = message.toLowerCase().includes('build') ||
@@ -93,6 +118,9 @@ export async function POST(request: NextRequest) {
     if (isBuildRequest) {
       // Simplified approach - directly use AI to create artifacts
 
+      // Get conversation context for AI
+      const conversationSummary = await ChatService.getConversationSummary(currentConversationId);
+      
       // Step 3: Generate AI response with tool usage
       const systemPrompt = `You are an expert AI coding assistant building a live sandbox preview system. 
 
@@ -101,6 +129,10 @@ Your job is to:
 2. Use the create_artifact tool to generate working code
 3. Create components that will actually render in the preview
 4. Provide clear explanations of what you're building
+5. Remember the conversation context and build upon previous artifacts
+
+CONVERSATION CONTEXT:
+${conversationSummary}
 
 CRITICAL: You MUST use the create_artifact tool for every build request. Do not just describe what you would build - actually build it using the tool.
 
@@ -111,11 +143,13 @@ When using create_artifact:
 - Include a clear description and preview of what the user will see
 - Make sure the code is complete and functional
 - Use the tool for EVERY component or piece of content you create
+- Build upon previous artifacts in the conversation when appropriate
 
 Example usage:
 - User says "build a button" → Use create_artifact to create a Button component
 - User says "create a form" → Use create_artifact to create a Form component
 - User says "make a landing page" → Use create_artifact to create HTML content
+- User says "add a header to the landing page" → Use create_artifact to create a header component that works with the existing page
 
 Available tools: ${TOOLS.map(t => t.name).join(', ')}`;
 
@@ -164,7 +198,7 @@ Remember: Use the create_artifact tool for EVERY piece of content you create.`
             await new Promise(resolve => setTimeout(resolve, 2000));
           }
           
-          const result = await executeTool(toolCall.name, toolCall.input);
+          const result = await executeTool(toolCall.name, toolCall.input, currentConversationId, userId);
           console.log(`Tool result:`, result);
           toolResults.push({
             toolId: toolCall.id,
@@ -187,12 +221,25 @@ Remember: Use the create_artifact tool for EVERY piece of content you create.`
       console.log('Final artifacts being returned:', artifacts);
       console.log('Tool results:', toolResults);
 
-      // Return enhanced response with tool results
+      // Add AI response to conversation
+      const aiResponse = response.content[0].type === 'text' ? response.content[0].text : 'Tool execution completed';
+      await ChatService.addMessage(currentConversationId, {
+        role: 'assistant',
+        content: aiResponse,
+        metadata: {
+          type: 'ai_response',
+          artifacts_created: artifacts.length,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+      // Return enhanced response with tool results and conversation ID
       return new Response(JSON.stringify({
         success: true,
-        response: response.content[0].type === 'text' ? response.content[0].text : 'Tool execution completed',
+        response: aiResponse,
         toolResults,
-        artifacts
+        artifacts,
+        conversationId: currentConversationId
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -232,11 +279,11 @@ Remember: Use the create_artifact tool for EVERY piece of content you create.`
 }
 
 // Tool execution functions
-async function executeTool(toolName: string, input: any): Promise<{ success: boolean; result: any; error?: string }> {
+async function executeTool(toolName: string, input: any, conversationId?: string, userId?: string): Promise<{ success: boolean; result: any; error?: string }> {
   try {
     switch (toolName) {
       case 'create_artifact':
-        return await createArtifact(input);
+        return await createArtifact(input, conversationId, userId);
       case 'analyze_project':
         return await analyzeProject(input);
       case 'read_multiple_files':
@@ -253,7 +300,7 @@ async function executeTool(toolName: string, input: any): Promise<{ success: boo
   }
 }
 
-async function createArtifact(input: any): Promise<{ success: boolean; result: any; error?: string }> {
+async function createArtifact(input: any, conversationId?: string, userId?: string): Promise<{ success: boolean; result: any; error?: string }> {
   try {
     console.log('createArtifact called with input:', input);
     const { name, type, content, description, preview } = input;
@@ -270,18 +317,40 @@ async function createArtifact(input: any): Promise<{ success: boolean; result: a
 
     console.log('Creating artifact:', { name, type, content: content.substring(0, 100) + '...' });
 
+    // Save artifact to database if conversationId is provided
+    let savedArtifact = null;
+    if (conversationId) {
+      savedArtifact = await ChatService.createArtifactFromChat(conversationId, {
+        name,
+        type,
+        content,
+        description: description || `A ${type} called ${name}`,
+        preview: preview || `This will display a ${type} called ${name}`,
+        metadata: {
+          source: 'ai_generated',
+          timestamp: new Date().toISOString()
+        }
+      }, userId);
+
+      if (!savedArtifact) {
+        console.warn('Failed to save artifact to database, but continuing with response');
+      }
+    }
+
     // Return success with artifact data
     const result = {
       success: true,
       result: {
         message: `Successfully created ${type} artifact: ${name}`,
         artifact: {
+          id: savedArtifact?.id || `temp_${Date.now()}`,
           name,
           type,
           content,
           description: description || `A ${type} called ${name}`,
           preview: preview || `This will display a ${type} called ${name}`,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          saved: !!savedArtifact
         }
       }
     };

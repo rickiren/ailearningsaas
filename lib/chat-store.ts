@@ -16,6 +16,7 @@ interface ChatState {
   updateStreamingMessage: (messageId: string, content: string) => void;
   finishStreamingMessage: (messageId: string) => void;
   updateMessageMetadata: (messageId: string, metadata: any) => void;
+  updateStreamingMetadata: (metadata: any) => void;
   clearMessages: () => void;
   setLoading: (loading: boolean) => void;
   setCurrentConversationId: (id: string | null) => void;
@@ -80,6 +81,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => ({
       messages: state.messages.map((msg) =>
         msg.id === messageId ? { ...msg, metadata } : msg
+      ),
+    }));
+  },
+  
+  updateStreamingMetadata: (metadata) => {
+    set((state) => ({
+      messages: state.messages.map((msg) =>
+        msg.id === state.streamingMessageId ? { ...msg, metadata } : msg
       ),
     }));
   },

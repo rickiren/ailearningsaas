@@ -25,7 +25,7 @@ export function CodeStreamingPreview({
   const [copied, setCopied] = useState(false);
 
   const contentToShow = finalContent || streamedContent;
-  const isComplete = !isStreaming && finalContent;
+  const isComplete = !isStreaming;
 
   const handleCopy = async () => {
     try {
@@ -127,6 +127,46 @@ export function CodeStreamingPreview({
               {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
               {copied ? 'Copied!' : 'Copy'}
             </button>
+            
+            {/* Download button for completed artifacts */}
+            {isComplete && (
+              <button
+                onClick={() => {
+                  const blob = new Blob([contentToShow], { type: 'text/plain' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `${artifactName}${getFileExtension(artifactType)}`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                }}
+                className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Download
+              </button>
+            )}
+            
+            {/* Close button for completed artifacts */}
+            {isComplete && (
+              <button
+                onClick={() => {
+                  // This will need to be handled by the parent component
+                  // For now, we'll just hide it by setting a local state
+                  setIsExpanded(false);
+                }}
+                className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Close
+              </button>
+            )}
           </div>
         </div>
 
@@ -144,34 +184,41 @@ export function CodeStreamingPreview({
       {/* Code Content */}
       {isExpanded && (
         <div className="relative">
-          {/* Code editor-like interface */}
-          <div className="bg-gray-900 text-gray-100 p-4 overflow-auto max-h-96">
-            <div className="flex items-center gap-2 mb-3 text-xs text-gray-400">
+          {/* Code editor-like interface with fixed dimensions */}
+          <div className="bg-gray-900 text-gray-100 overflow-hidden rounded-b-lg">
+            {/* File header bar */}
+            <div className="flex items-center gap-2 px-4 py-2 text-xs text-gray-400 bg-gray-800 border-b border-gray-700">
               <div className="flex space-x-1">
                 <div className="w-3 h-3 rounded-full bg-red-500"></div>
                 <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
               </div>
-              <span className="ml-2">{artifactName}{getFileExtension(artifactType)}</span>
+              <span className="ml-2 font-medium">{artifactName}{getFileExtension(artifactType)}</span>
             </div>
             
-            <pre className="text-sm font-mono">
-              <code className={`language-${getLanguageFromType(artifactType)}`}>
-                {contentToShow}
-                {isStreaming && (
-                  <span className="inline-block w-2 h-4 bg-blue-500 animate-pulse ml-1"></span>
-                )}
-              </code>
-            </pre>
-          </div>
-
-          {/* Line numbers overlay */}
-          <div className="absolute left-0 top-0 bg-gray-800 text-gray-400 text-xs font-mono p-4 pt-16 border-r border-gray-700 select-none">
-            {contentToShow.split('\n').map((_, index) => (
-              <div key={index} className="text-right pr-3">
-                {index + 1}
+            {/* Code content with fixed height and scrolling */}
+            <div className="relative">
+              {/* Line numbers - fixed position */}
+              <div className="absolute left-0 top-0 bg-gray-800 text-gray-400 text-xs font-mono py-4 px-3 border-r border-gray-700 select-none w-12 h-full">
+                {contentToShow.split('\n').map((_, index) => (
+                  <div key={index} className="text-right pr-2 leading-6">
+                    {index + 1}
+                  </div>
+                ))}
               </div>
-            ))}
+              
+              {/* Code content - scrollable with padding for line numbers */}
+              <div className="pl-12 pr-4 py-4 overflow-auto" style={{ height: '400px' }}>
+                <pre className="text-sm font-mono leading-6">
+                  <code className={`language-${getLanguageFromType(artifactType)}`}>
+                    {contentToShow}
+                    {isStreaming && (
+                      <span className="inline-block w-2 h-4 bg-blue-500 animate-pulse ml-1"></span>
+                    )}
+                  </code>
+                </pre>
+              </div>
+            </div>
           </div>
         </div>
       )}

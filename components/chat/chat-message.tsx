@@ -8,6 +8,7 @@ import { MindmapStore } from '@/lib/mindmap-store';
 import { useState } from 'react';
 import { MindMapNode } from '@/types/artifacts';
 import { ToolResultDisplay, ToolExecutionStatus } from './tool-result-display';
+import { ThinkingIndicator, ToolExecutionProgress } from './thinking-indicator';
 
 interface ChatMessageProps {
   message: Message;
@@ -185,7 +186,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
             )}>
               <div className={cn(
                 'text-sm leading-relaxed whitespace-pre-wrap break-words',
-                isUser ? 'text-white' : 'text-slate-800'
+                isUser ? 'text-white user-message' : 'text-slate-800'
               )}>
                 {displayContent}
                 {isStreaming && (
@@ -218,6 +219,21 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 </button>
               )}
             </div>
+
+            {/* AI Thinking Process Indicator */}
+            {!isUser && message.metadata?.thinking && (
+              <ThinkingIndicator 
+                thinking={message.metadata.thinking}
+                className="mt-3"
+              />
+            )}
+
+            {/* Tool Execution Progress */}
+            {!isUser && message.metadata?.toolExecution && (
+              <ToolExecutionProgress 
+                toolExecution={message.metadata.toolExecution}
+              />
+            )}
 
             {/* Tool Execution Status */}
             {hasToolStatus && (

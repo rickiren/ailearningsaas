@@ -50,6 +50,12 @@ export function Navigation() {
       href: '/nlu-demo',
       icon: Brain,
       description: 'Natural language understanding system'
+    },
+    {
+      name: 'Test Artifacts',
+      href: '/test-artifacts',
+      icon: Code,
+      description: 'Test artifacts database functionality'
     }
   ];
 

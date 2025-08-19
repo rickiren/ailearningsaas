@@ -17,7 +17,8 @@ export function ChatInput() {
     updateStreamingMessage, 
     finishStreamingMessage,
     currentConversationId,
-    refreshConversations
+    refreshConversations,
+    updateStreamingMetadata
   } = useChatStore();
 
   const { addArtifact, setCurrentArtifact, updateArtifact } = useArtifactStore();
@@ -151,6 +152,51 @@ export function ChatInput() {
               if (parsed.conversation_id && !currentConversationId) {
                 // Update the current conversation ID and refresh conversations list
                 await refreshConversations(parsed.conversation_id);
+              }
+              
+              // Handle thinking status updates
+              if (parsed.thinking) {
+                // Update the streaming message metadata with thinking status
+                const { updateStreamingMetadata } = useChatStore.getState();
+                updateStreamingMetadata({ thinking: parsed.thinking });
+                continue;
+              }
+              
+              // Handle tool call updates
+              if (parsed.toolCall) {
+                const toolCallMessage = `🛠️ ${parsed.toolCall.message}`;
+                updateStreamingMessage(assistantMessageId, toolCallMessage);
+                continue;
+              }
+              
+              // Handle tool execution status updates
+              if (parsed.toolExecution) {
+                // Update the streaming message metadata with tool execution status
+                const { updateStreamingMetadata } = useChatStore.getState();
+                updateStreamingMetadata({ toolExecution: parsed.toolExecution });
+                
+                // Also update the message content to show the status
+                let toolExecutionMessage = '';
+                
+                switch (parsed.toolExecution.status) {
+                  case 'starting':
+                    toolExecutionMessage = `🚀 ${parsed.toolExecution.message}`;
+                    break;
+                  case 'executing':
+                    toolExecutionMessage = `⚡ ${parsed.toolExecution.message}`;
+                    break;
+                  case 'completed':
+                    toolExecutionMessage = `✅ ${parsed.toolExecution.message}`;
+                    break;
+                  case 'failed':
+                    toolExecutionMessage = `❌ ${parsed.toolExecution.message}`;
+                    break;
+                  default:
+                    toolExecutionMessage = `🔄 ${parsed.toolExecution.message || 'Tool execution in progress...'}`;
+                }
+                
+                updateStreamingMessage(assistantMessageId, toolExecutionMessage);
+                continue;
               }
               
               if (parsed.content) {
@@ -300,7 +346,7 @@ export function ChatInput() {
               }
               disabled={isLoading || !currentConversationId}
               style={{ height: `${inputHeight}px` }}
-              className={`flex-1 pl-14 pr-20 py-3 rounded-2xl border-2 bg-white shadow-sm focus:ring-4 focus:ring-blue-100 transition-all duration-300 placeholder:text-slate-400 text-slate-700 resize-none overflow-hidden leading-6 ${
+              className={`flex-1 pl-14 pr-20 py-3 rounded-2xl border-2 bg-white shadow-sm focus:ring-4 focus:ring-blue-100 transition-all duration-300 placeholder:text-slate-400 text-slate-700 resize-none overflow-hidden leading-6 chat-input-text ${
                 !currentConversationId 
                   ? 'border-slate-300 bg-slate-50 cursor-not-allowed' 
                   : 'border-slate-200 focus:border-blue-500'

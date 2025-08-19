@@ -215,6 +215,59 @@ export interface Database {
           metadata?: any
         }
       }
+      artifacts: {
+        Row: {
+          id: string
+          name: string
+          type: string
+          content: string
+          description?: string
+          preview?: string
+          conversation_id?: string
+          project_id?: string
+          user_id?: string
+          version: number
+          is_active: boolean
+          tags: string[]
+          metadata?: any
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          type: string
+          content: string
+          description?: string
+          preview?: string
+          conversation_id?: string
+          project_id?: string
+          user_id?: string
+          version?: number
+          is_active?: boolean
+          tags?: string[]
+          metadata?: any
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          type?: string
+          content?: string
+          description?: string
+          preview?: string
+          conversation_id?: string
+          project_id?: string
+          user_id?: string
+          version?: number
+          is_active?: boolean
+          tags?: string[]
+          metadata?: any
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
   }
 }
@@ -230,3 +283,6 @@ export type SkillAtomInsert = Database['public']['Tables']['skill_atoms']['Inser
 export type Drill = Database['public']['Tables']['drills']['Row']
 export type DrillInsert = Database['public']['Tables']['drills']['Insert']
 export type DrillUpdate = Database['public']['Tables']['drills']['Update']
+export type Artifact = Database['public']['Tables']['artifacts']['Row']
+export type ArtifactInsert = Database['public']['Tables']['artifacts']['Insert']
+export type ArtifactUpdate = Database['public']['Tables']['artifacts']['Update']

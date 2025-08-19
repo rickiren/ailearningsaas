@@ -375,16 +375,24 @@ function getExtensionForType(type: string): string {
 }
 
 // Base system prompt with function calling capabilities
-const BASE_SYSTEM_PROMPT = `You are an expert AI agent with access to powerful tools for creating and modifying code and content. You can:
+const BASE_SYSTEM_PROMPT = `You are an expert AI agent with access to powerful tools for creating and modifying code and content. 
 
-1. **Create new artifacts** - Generate new components, functions, classes, interfaces, and files
-2. **Update existing code** - Modify and improve existing code and content
-3. **Read project files** - Understand the current state of the project
-4. **Write files** - Create or modify project files
+IMPORTANT: You must think out loud and explain your process step by step. Here's how to respond:
 
-When you need to perform actions, use the available tools. Always explain what you're doing and why before using tools.
+1. **ALWAYS start by thinking out loud** - Explain what you understand about the request and your plan
+2. **Stream your thinking process** - Share your analysis, planning, and decision-making as you work
+3. **Use tools incrementally** - Execute one tool at a time and explain what you're doing
+4. **Show progress** - After each tool execution, explain what was accomplished and what's next
 
-IMPORTANT: When using tools, be precise and thorough. Always check the current state before making changes, and ensure your modifications are correct and well-structured.`;
+Example response pattern:
+"I'll help you create a login form. Let me analyze your request first...
+I understand you need a form with email and password fields. Let me start by creating the component structure...
+Now I'll add the styling to make it look professional...
+Finally, I'll add the form validation logic..."
+
+When using tools, be precise and thorough. Always check the current state before making changes, and ensure your modifications are correct and well-structured.
+
+Remember: Think out loud, work step by step, and show your progress in real-time.`;
 
 export async function POST(request: NextRequest) {
   try {
@@ -471,39 +479,71 @@ export async function POST(request: NextRequest) {
 
           let fullMessage = '';
           let toolCalls: any[] = [];
+          let isThinking = true;
           
           for await (const chunk of claudeStream) {
             if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
               fullMessage += chunk.delta.text;
               
-              // Send the text chunk
+              // Send the text chunk immediately for real-time streaming
               const data = JSON.stringify({ content: chunk.delta.text });
               controller.enqueue(new TextEncoder().encode(`data: ${data}\n\n`));
+              
+              // If this is the first chunk, mark that AI is thinking
+              if (isThinking) {
+                const thinkingData = JSON.stringify({ 
+                  thinking: { 
+                    status: 'active',
+                    message: 'AI is analyzing and planning...'
+                  } 
+                });
+                controller.enqueue(new TextEncoder().encode(`data: ${thinkingData}\n\n`));
+                isThinking = false;
+              }
             }
             
             if (chunk.type === 'message_stop') {
-              // Execute all tool calls
+              // Execute all tool calls one by one with real-time updates
               if (toolCalls.length > 0) {
                 controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ 
                   toolExecution: { 
                     status: 'starting', 
-                    toolCount: toolCalls.length 
+                    toolCount: toolCalls.length,
+                    message: `Executing ${toolCalls.length} tool${toolCalls.length > 1 ? 's' : ''}...`
                   } 
                 })}\n\n`));
                 
-                for (const toolCall of toolCalls) {
+                for (let i = 0; i < toolCalls.length; i++) {
+                  const toolCall = toolCalls[i];
+                  
                   try {
+                    // Update status to show current tool execution
+                    const currentToolData = JSON.stringify({
+                      toolExecution: {
+                        status: 'executing',
+                        currentTool: toolCall.name,
+                        currentIndex: i + 1,
+                        totalTools: toolCalls.length,
+                        message: `Executing ${toolCall.name} (${i + 1}/${toolCalls.length})...`
+                      }
+                    });
+                    controller.enqueue(new TextEncoder().encode(`data: ${currentToolData}\n\n`));
+                    
                     // Execute the tool
                     const result = await executeTool(toolCall.name, toolCall.input);
                     
-                    // Send tool execution result
+                    // Send tool execution result immediately
                     const toolResult = JSON.stringify({
                       toolExecution: {
                         toolId: toolCall.id,
                         toolName: toolCall.name,
                         success: result.success,
                         result: result.result,
-                        error: result.error
+                        error: result.error,
+                        status: 'completed',
+                        message: result.success 
+                          ? `${toolCall.name} completed successfully!`
+                          : `${toolCall.name} failed: ${result.error}`
                       }
                     });
                     controller.enqueue(new TextEncoder().encode(`data: ${toolResult}\n\n`));
@@ -524,13 +564,19 @@ export async function POST(request: NextRequest) {
                       });
                       controller.enqueue(new TextEncoder().encode(`data: ${toolResultMessage}\n\n`));
                     }
+                    
+                    // Small delay to make the streaming visible
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    
                   } catch (error) {
                     const errorResult = JSON.stringify({
                       toolExecution: {
                         toolId: toolCall.id,
                         toolName: toolCall.name,
                         success: false,
-                        error: error instanceof Error ? error.message : 'Tool execution failed'
+                        error: error instanceof Error ? error.message : 'Tool execution failed',
+                        status: 'failed',
+                        message: `${toolCall.name} failed with an error`
                       }
                     });
                     controller.enqueue(new TextEncoder().encode(`data: ${errorResult}\n\n`));
@@ -541,10 +587,20 @@ export async function POST(request: NextRequest) {
                 controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ 
                   toolExecution: { 
                     status: 'completed', 
-                    toolCount: toolCalls.length 
+                    toolCount: toolCalls.length,
+                    message: `All ${toolCalls.length} tool${toolCalls.length > 1 ? 's' : ''} completed!`
                   } 
                 })}\n\n`));
               }
+              
+              // Mark thinking as complete
+              const thinkingCompleteData = JSON.stringify({ 
+                thinking: { 
+                  status: 'completed',
+                  message: 'AI analysis and execution completed'
+                } 
+              });
+              controller.enqueue(new TextEncoder().encode(`data: ${thinkingCompleteData}\n\n`));
               
               // Save AI response to database
               try {
