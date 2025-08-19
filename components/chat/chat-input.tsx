@@ -234,41 +234,30 @@ export function ChatInput() {
   // Handle editing commands using AI tools
   const handleEditingCommand = async (message: string) => {
     try {
-      // Add assistant message for editing feedback
-      const assistantMessageId = addMessage({
-        content: `Processing your editing request: "${message}"...`,
-        role: 'assistant',
-      });
-
-      if (!assistantMessageId) {
-        setError('Failed to add assistant message. Please try starting a new chat.');
-        return;
-      }
-
       // Parse and execute the command
       const result = await parseAndExecuteAICommand(message);
       
-      // Update the assistant message with the result
+      // Add the result message
       if (result.success) {
-        updateStreamingMessage(assistantMessageId, `✅ ${result.message}`);
-        finishStreamingMessage(assistantMessageId);
+        addMessage({
+          content: `✅ ${result.message}`,
+          role: 'assistant',
+        });
       } else {
-        updateStreamingMessage(assistantMessageId, `❌ ${result.message}`);
-        finishStreamingMessage(assistantMessageId);
+        addMessage({
+          content: `❌ ${result.message}`,
+          role: 'assistant',
+        });
       }
       
     } catch (error) {
       console.error('Error handling editing command:', error);
       
       // Add error message
-      const errorMessageId = addMessage({
+      addMessage({
         content: `Sorry, I encountered an error while processing your editing request: ${error instanceof Error ? error.message : 'Unknown error'}`,
         role: 'assistant',
       });
-
-      if (!errorMessageId) {
-        setError('Failed to add error message. Please try starting a new chat.');
-      }
     }
   };
 

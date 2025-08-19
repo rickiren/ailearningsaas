@@ -6,6 +6,7 @@ import { Send, Plus, Edit, MessageSquare, Eye, GraduationCap, Database, ArrowUpR
 import { ThinkingIndicator } from '@/components/chat/thinking-indicator';
 import { ToolExecutionProgress } from '@/components/chat/tool-execution-progress';
 import { ProgressSummary } from '@/components/chat/progress-summary';
+import { CodeStreamingPreview } from '@/components/chat/code-streaming-preview';
 import { Zero280ArtifactRenderer } from '@/components/artifacts/zero280-artifact-renderer';
 import { useProgressTracker, progressHelpers } from '@/lib/progress-tracker';
 
@@ -42,6 +43,15 @@ export default function Zero280BuildPage() {
     artifacts?: Artifact[];
     toolResults?: ToolResult[];
   }>>([]);
+  
+  // Code streaming state
+  const [isStreamingCode, setIsStreamingCode] = useState(false);
+  const [streamedContent, setStreamedContent] = useState('');
+  const [streamingArtifact, setStreamingArtifact] = useState<{
+    name: string;
+    type: string;
+    content: string;
+  } | null>(null);
   
   // Progress tracking
   const { 
@@ -95,6 +105,13 @@ export default function Zero280BuildPage() {
     const messageId = `msg_${Date.now()}_ai`;
     startMessageExecution(messageId);
     startThinking(messageId, "Analyzing your request...");
+    
+    // Simulate building progress after thinking
+    setTimeout(() => {
+      if (isThinking) {
+        progressHelpers.simulateArtifactCreation('component', 3000);
+      }
+    }, 2000); // Start building after 2 seconds of thinking
     
     // Add AI thinking message
     const newAIMessage = {
@@ -153,9 +170,36 @@ export default function Zero280BuildPage() {
             : msg
         ));
         
-        // Complete progress tracking
-        stopThinking();
-        completeMessageExecution();
+        // Start building progress simulation
+        if (data.artifacts && data.artifacts.length > 0) {
+          // Simulate building process
+          const artifact = data.artifacts[0];
+          setStreamingArtifact(artifact);
+          setIsStreamingCode(true);
+          setStreamedContent('');
+          
+          // Simulate code streaming
+          const content = artifact.content;
+          const lines = content.split('\n');
+          let currentLine = 0;
+          
+          const streamInterval = setInterval(() => {
+            if (currentLine < lines.length) {
+              setStreamedContent(prev => prev + lines[currentLine] + '\n');
+              currentLine++;
+            } else {
+              clearInterval(streamInterval);
+              setIsStreamingCode(false);
+              // Complete progress tracking after streaming
+              stopThinking();
+              completeMessageExecution();
+            }
+          }, 100); // Stream one line every 100ms
+        } else {
+          // Complete progress tracking
+          stopThinking();
+          completeMessageExecution();
+        }
       } else {
         // Handle error response
         const errorData = await response.json();
@@ -299,9 +343,36 @@ export default function Zero280BuildPage() {
             : msg
         ));
         
-        // Complete progress tracking
-        stopThinking();
-        completeMessageExecution();
+        // Start building progress simulation
+        if (data.artifacts && data.artifacts.length > 0) {
+          // Simulate building process
+          const artifact = data.artifacts[0];
+          setStreamingArtifact(artifact);
+          setIsStreamingCode(true);
+          setStreamedContent('');
+          
+          // Simulate code streaming
+          const content = artifact.content;
+          const lines = content.split('\n');
+          let currentLine = 0;
+          
+          const streamInterval = setInterval(() => {
+            if (currentLine < lines.length) {
+              setStreamedContent(prev => prev + lines[currentLine] + '\n');
+              currentLine++;
+            } else {
+              clearInterval(streamInterval);
+              setIsStreamingCode(false);
+              // Complete progress tracking after streaming
+              stopThinking();
+              completeMessageExecution();
+            }
+          }, 100); // Stream one line every 100ms
+        } else {
+          // Complete progress tracking
+          stopThinking();
+          completeMessageExecution();
+        }
       } else {
         // Handle error response
         const errorData = await response.json();
@@ -458,6 +529,17 @@ export default function Zero280BuildPage() {
             {!isActive && executions.length > 0 && (
               <ProgressSummary 
                 executions={executions}
+                className="mb-4"
+              />
+            )}
+            
+            {/* Code Streaming Preview */}
+            {isStreamingCode && streamingArtifact && (
+              <CodeStreamingPreview
+                artifactName={streamingArtifact.name}
+                artifactType={streamingArtifact.type}
+                isStreaming={isStreamingCode}
+                streamedContent={streamedContent}
                 className="mb-4"
               />
             )}

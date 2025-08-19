@@ -182,8 +182,8 @@ export const progressHelpers = {
     return executionId;
   },
   
-  // Simulate artifact creation
-  simulateArtifactCreation: (artifactType: string, duration = 1800) => {
+  // Simulate artifact creation with building steps
+  simulateArtifactCreation: (artifactType: string, duration = 3000) => {
     const tracker = useProgressTracker.getState();
     const executionId = tracker.addToolExecution({
       toolId: 'create_artifact',
@@ -191,10 +191,34 @@ export const progressHelpers = {
       status: 'pending'
     });
     
+    // Simulate building steps
+    setTimeout(() => {
+      tracker.updateToolExecution(executionId, { 
+        status: 'running',
+        progress: 25,
+        result: { step: 'structure', message: 'Generating component structure...' }
+      });
+    }, 500);
+    
+    setTimeout(() => {
+      tracker.updateToolExecution(executionId, { 
+        progress: 50,
+        result: { step: 'styling', message: 'Adding styling and layout...' }
+      });
+    }, 1000);
+    
+    setTimeout(() => {
+      tracker.updateToolExecution(executionId, { 
+        progress: 75,
+        result: { step: 'functionality', message: 'Implementing functionality...' }
+      });
+    }, 2000);
+    
     setTimeout(() => {
       tracker.completeToolExecution(executionId, {
         message: `Successfully created ${artifactType} artifact`,
-        type: artifactType
+        type: artifactType,
+        step: 'complete'
       });
     }, duration);
     

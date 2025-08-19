@@ -9,6 +9,7 @@ interface ChatState {
   currentConversationId: string | null;
   streamingToolResults: any[];
   streamingToolStatus: any;
+  conversations: any[]; // Add conversations property
   
   // Actions
   addMessage: (message: Omit<Message, 'id' | 'timestamp'>) => string | null;
@@ -24,6 +25,9 @@ interface ChatState {
   clearStreamingToolData: () => void;
   createNewConversation: () => Promise<string>;
   refreshConversations: (newConversationId?: string) => Promise<void>;
+  loadConversations: () => Promise<void>; // Add method to load conversations
+  deleteConversation: (id: string) => Promise<void>; // Add method to delete conversation
+  loadConversation: (id: string) => Promise<void>; // Add method to load conversation
   
   // Context management
   getContextForRouting: () => any;
@@ -39,6 +43,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   currentConversationId: null,
   streamingToolResults: [],
   streamingToolStatus: null,
+  conversations: [],
   
   addMessage: (message) => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -123,6 +128,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         currentConversationId: conversation.id,
       });
 
+      // Refresh conversations list
+      await get().loadConversations();
+
       return conversation.id;
     } catch (error) {
       console.error('Failed to create conversation:', error);
@@ -140,6 +148,42 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     } catch (error) {
       console.error('Failed to refresh conversations:', error);
+    }
+  },
+  
+  loadConversations: async () => {
+    try {
+      const { ConversationStore } = await import('./conversation-store');
+      const conversations = await ConversationStore.getConversations();
+      set({ conversations });
+    } catch (error) {
+      console.error('Failed to load conversations:', error);
+    }
+  },
+
+  deleteConversation: async (id) => {
+    try {
+      const { ConversationStore } = await import('./conversation-store');
+      await ConversationStore.deleteConversation(id);
+      set((state) => ({
+        conversations: state.conversations.filter((conv) => conv.id !== id),
+      }));
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+    }
+  },
+
+  loadConversation: async (id) => {
+    try {
+      const { ConversationStore } = await import('./conversation-store');
+      const conversation = await ConversationStore.getConversation(id);
+      if (conversation) {
+        set({ currentConversationId: conversation.id });
+        // Optionally, load messages for the conversation
+        // This would require a separate message loading mechanism
+      }
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
     }
   },
   

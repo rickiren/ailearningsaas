@@ -157,6 +157,13 @@ Remember: Use the create_artifact tool for EVERY piece of content you create.`
       for (const toolCall of toolCalls) {
         if (toolCall.type === 'tool_use') {
           console.log(`Executing tool: ${toolCall.name} with input:`, toolCall.input);
+          
+          // For create_artifact tool, simulate building process
+          if (toolCall.name === 'create_artifact') {
+            // Simulate building delay
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+          
           const result = await executeTool(toolCall.name, toolCall.input);
           console.log(`Tool result:`, result);
           toolResults.push({

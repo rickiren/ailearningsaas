@@ -4,6 +4,7 @@ import { useChatStore } from '@/lib/chat-store';
 import { Button } from '@/components/ui/button';
 import { Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useEffect } from 'react';
 
 export function ConversationTabs() {
   const { 
@@ -11,12 +12,19 @@ export function ConversationTabs() {
     currentConversationId, 
     loadConversation,
     createNewConversation,
-    deleteConversation
+    deleteConversation,
+    loadConversations
   } = useChatStore();
+
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
 
   const handleNewConversation = async () => {
     try {
       await createNewConversation();
+      // Refresh conversations after creating a new one
+      await loadConversations();
     } catch (error) {
       console.error('Failed to create conversation:', error);
     }
@@ -26,10 +34,13 @@ export function ConversationTabs() {
     e.stopPropagation();
     if (confirm('Are you sure you want to delete this conversation? This action cannot be undone.')) {
       await deleteConversation(conversationId);
+      // Refresh conversations after deleting
+      await loadConversations();
     }
   };
 
-  if (conversations.length === 0) {
+  // Add null check to prevent the error
+  if (!conversations || conversations.length === 0) {
     return (
       <div className="flex items-center gap-2 px-6 py-3 border-b border-slate-200 bg-white/95 backdrop-blur-xl supports-[backdrop-filter]:bg-white/80">
         <div className="flex-1 text-center">
