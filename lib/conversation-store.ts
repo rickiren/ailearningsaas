@@ -86,8 +86,53 @@ export class ConversationStore {
       .eq('id', id)
 
     if (error) {
-      throw new Error(`Failed to update conversation metadata: ${error.message}`)
+      throw new Error(`Failed to update conversation: ${error.message}`)
     }
+  }
+
+  // Link conversation to a project (mindmap)
+  static async linkConversationToProject(conversationId: string, projectId: string): Promise<void> {
+    const { error } = await supabase
+      .from('conversations')
+      .update({ 
+        project_id: projectId,
+        updated_at: new Date().toISOString() 
+      })
+      .eq('id', conversationId)
+
+    if (error) {
+      throw new Error(`Failed to link conversation to project: ${error.message}`)
+    }
+  }
+
+  // Get conversations by project ID
+  static async getConversationsByProject(projectId: string): Promise<Conversation[]> {
+    const { data, error } = await supabase
+      .from('conversations')
+      .select()
+      .eq('project_id', projectId)
+      .order('updated_at', { ascending: false })
+
+    if (error) {
+      throw new Error(`Failed to get conversations by project: ${error.message}`)
+    }
+
+    return data || []
+  }
+
+  // Get the current active project for a conversation
+  static async getConversationProject(conversationId: string): Promise<string | null> {
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('project_id')
+      .eq('id', conversationId)
+      .single()
+
+    if (error && error.code !== 'PGRST116') {
+      throw new Error(`Failed to get conversation project: ${error.message}`)
+    }
+
+    return data?.project_id || null
   }
 
   // Delete conversation and all messages

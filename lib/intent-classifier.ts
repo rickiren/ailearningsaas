@@ -28,13 +28,36 @@ export function classifyUserIntent(message: string, hasCurrentMindmap: boolean):
   ];
   
   const learningWords = [
-    'module', 'lesson', 'course', 'learning', 'path', 'skill', 'knowledge', 
-    'topic', 'subject', 'curriculum', 'syllabus', 'training', 'education'
+    'course', 'learning', 'path', 'knowledge', 'topic', 'subject', 'curriculum', 
+    'syllabus', 'training', 'education'
   ];
   
-  // Check for create_new intent
+  // PRIORITY 1: Check for edit_existing intent FIRST when there's an existing mindmap
+  const hasEditWords = editExistingPatterns.some(word => lowerMessage.includes(word));
+  
+  if (hasEditWords && hasCurrentMindmap) {
+    return {
+      intent: 'edit_existing',
+      confidence: 0.9,
+      reasoning: `Message contains editing words (${editExistingPatterns.filter(w => lowerMessage.includes(w)).join(', ')}) and there is an active mindmap to edit`,
+      extractedEntities: editExistingPatterns.filter(word => lowerMessage.includes(word))
+    };
+  }
+  
+  // PRIORITY 2: Check for create_new intent (but with editing priority logic)
   const hasCreateNewWords = createNewPatterns.some(word => lowerMessage.includes(word));
   const hasLearningWords = learningWords.some(word => lowerMessage.includes(word));
+  
+  // Negative patterns for creation - if message starts with editing verbs and hasCurrentMindmap=true, don't allow create_new
+  const startsWithEditVerb = editExistingPatterns.some(verb => lowerMessage.startsWith(verb));
+  if (startsWithEditVerb && hasCurrentMindmap) {
+    return {
+      intent: 'edit_existing',
+      confidence: 0.9,
+      reasoning: `Message starts with editing verb and there is an active mindmap - treating as edit_existing`,
+      extractedEntities: editExistingPatterns.filter(word => lowerMessage.includes(word))
+    };
+  }
   
   if (hasCreateNewWords && hasLearningWords) {
     return {
@@ -54,18 +77,7 @@ export function classifyUserIntent(message: string, hasCurrentMindmap: boolean):
     };
   }
   
-  // Check for edit_existing intent
-  const hasEditWords = editExistingPatterns.some(word => lowerMessage.includes(word));
-  
-  if (hasEditWords && hasCurrentMindmap) {
-    return {
-      intent: 'edit_existing',
-      confidence: 0.8,
-      reasoning: `Message contains editing words (${editExistingPatterns.filter(w => lowerMessage.includes(w)).join(', ')}) and there is an active mindmap to edit`,
-      extractedEntities: editExistingPatterns.filter(word => lowerMessage.includes(word))
-    };
-  }
-  
+  // PRIORITY 3: Check for edit_existing intent when no mindmap exists
   if (hasEditWords && !hasCurrentMindmap) {
     return {
       intent: 'edit_existing',
@@ -117,3 +129,16 @@ export function getConfidenceDescription(confidence: number): string {
 export function isConfidentIntent(result: IntentResult, threshold: number = 0.5): boolean {
   return result.confidence >= threshold;
 }
+
+// Simple test to verify the classifier is working
+console.log('=== INTENT CLASSIFIER TEST ===');
+const testResult = classifyUserIntent("can you change the title of this course", true);
+console.log('Test message: "can you change the title of this course"');
+console.log('hasCurrentMindmap: true');
+console.log('Intent:', testResult.intent);
+console.log('Confidence:', testResult.confidence);
+console.log('Reasoning:', testResult.reasoning);
+console.log('Extracted Entities:', testResult.extractedEntities);
+console.log('Confidence Level:', getConfidenceDescription(testResult.confidence));
+console.log('Is Confident (>0.5):', isConfidentIntent(testResult));
+console.log('================================');

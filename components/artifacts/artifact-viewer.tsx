@@ -1,308 +1,331 @@
 'use client';
 
-import { useArtifactStore } from '@/lib/artifact-store';
-import { MindMapCanvas } from './mind-map-canvas';
-import { SkillAtomBuilder } from './skill-atom-builder';
-import { DrillPreview } from './drill-preview';
-import { WelcomeScreen } from './welcome-screen';
-import { ProgressViewer } from './progress-viewer';
-import { FileText, Map, Target, Play, BarChart3, Download, Share, Settings, Trash2, Clock } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { useState } from 'react';
+import { Copy, Download, ChevronDown, ChevronRight, Eye, Code, FileText, Tag, Calendar, User, Hash } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useState, useEffect } from 'react';
-import { MindmapStore } from '@/lib/mindmap-store';
+import { Artifact } from '@/lib/artifact-storage';
 
-const ARTIFACT_ICONS = {
-  mindmap: Map,
-  'skill-atom': Target,
-  drill: Play,
-  progress: BarChart3,
-  welcome: FileText,
+interface ArtifactViewerProps {
+  artifact: Artifact;
+  showMetadata?: boolean;
+  collapsible?: boolean;
+  className?: string;
+}
+
+const languageIcons: Record<string, React.ReactNode> = {
+  typescript: <Code className="h-4 w-4" />,
+  javascript: <Code className="h-4 w-4" />,
+  tsx: <Code className="h-4 w-4" />,
+  jsx: <Code className="h-4 w-4" />,
+  html: <FileText className="h-4 w-4" />,
+  css: <FileText className="h-4 w-4" />,
+  markdown: <FileText className="h-4 w-4" />,
+  json: <FileText className="h-4 w-4" />,
+  python: <Code className="h-4 w-4" />,
+  java: <Code className="h-4 w-4" />,
+  cpp: <Code className="h-4 w-4" />,
+  text: <FileText className="h-4 w-4" />
 };
 
-const ARTIFACT_TITLES = {
-  mindmap: 'Learning Path Mind Map',
-  'skill-atom': 'Skill Details',
-  drill: 'Practice Drill',
-  progress: 'Progress Overview',
-  welcome: 'Getting Started',
+const languageNames: Record<string, string> = {
+  typescript: 'TypeScript',
+  javascript: 'JavaScript',
+  tsx: 'TSX',
+  jsx: 'JSX',
+  html: 'HTML',
+  css: 'CSS',
+  markdown: 'Markdown',
+  json: 'JSON',
+  python: 'Python',
+  java: 'Java',
+  cpp: 'C++',
+  text: 'Text'
 };
 
-export function ArtifactViewer() {
-  const { currentArtifact, artifacts, cleanupDuplicates, addArtifact, setCurrentArtifact } = useArtifactStore();
-  const [savedMindmaps, setSavedMindmaps] = useState<any[]>([]);
-  const [showSavedMindmaps, setShowSavedMindmaps] = useState(false);
-  const [isLoadingSaved, setIsLoadingSaved] = useState(false);
-  
-  console.log('🎨 ArtifactViewer render:', {
-    hasCurrentArtifact: !!currentArtifact,
-    currentArtifactType: currentArtifact?.type,
-    currentArtifactTitle: currentArtifact?.title,
-    totalArtifacts: artifacts.length
-  });
+export function ArtifactViewer({ 
+  artifact, 
+  showMetadata = true, 
+  collapsible = true,
+  className 
+}: ArtifactViewerProps) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [showRawData, setShowRawData] = useState(false);
 
-  // Load saved mindmaps
-  const loadSavedMindmaps = async () => {
-    setIsLoadingSaved(true);
+  const handleCopy = async () => {
     try {
-      const projects = await MindmapStore.getUserMindmaps();
-      setSavedMindmaps(projects);
+      await navigator.clipboard.writeText(artifact.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch (error) {
-      console.error('Failed to load saved mindmaps:', error);
-    } finally {
-      setIsLoadingSaved(false);
+      console.error('Failed to copy:', error);
     }
   };
 
-  // Handle loading a saved mindmap
-  const handleLoadSavedMindmap = async (project: any) => {
-    try {
-      // Check if an artifact with this title already exists
-      const existingArtifact = useArtifactStore.getState().hasArtifact(project.title, project.id);
-      
-      if (existingArtifact) {
-        // If we have an existing artifact, set it as current instead of creating a duplicate
-        console.log('✅ Found existing artifact, setting as current:', existingArtifact.id);
-        setCurrentArtifact(existingArtifact.id);
-        setShowSavedMindmaps(false);
-        return;
-      }
-      
-      const mindmapData = await MindmapStore.loadMindmap(project.id);
-      
-      if (mindmapData) {
-        // Create a new artifact with the loaded data
-        const artifactId = await addArtifact({
-          type: 'mindmap',
-          title: project.title,
-          data: mindmapData,
-          metadata: { projectId: project.id }
-        });
-        
-        if (artifactId) {
-          setCurrentArtifact(artifactId);
-          setShowSavedMindmaps(false);
-          console.log('✅ Loaded saved mindmap:', project.id);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load saved mindmap:', error);
-    }
-  };
-
-  const handleExport = () => {
-    if (!currentArtifact) return;
-    
-    const dataStr = JSON.stringify(currentArtifact.data, null, 2);
-    const blob = new Blob([dataStr], { type: 'application/json' });
+  const handleDownload = () => {
+    const blob = new Blob([artifact.content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${currentArtifact.title.toLowerCase().replace(/\s+/g, '-')}.json`;
-    link.click();
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${artifact.metadata.title}.${artifact.metadata.language || 'txt'}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
-  const handleShare = async () => {
-    if (!currentArtifact) return;
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const renderContent = () => {
+    const { type, language } = artifact.metadata;
     
-    const shareData = {
-      title: currentArtifact.title,
-      text: `Check out this learning path: ${currentArtifact.title}`,
-      url: window.location.href,
-    };
+    // For mindmaps, show structured data
+    if (type === 'mindmap' && artifact.rawData) {
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowRawData(!showRawData)}
+              className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 transition-colors"
+            >
+              {showRawData ? <Eye className="h-4 w-4" /> : <Code className="h-4 w-4" />}
+              {showRawData ? 'Show Structure' : 'Show Raw Data'}
+            </button>
+          </div>
+          
+          {showRawData ? (
+            <pre className="bg-gray-50 p-4 rounded-lg overflow-x-auto text-sm">
+              <code>{JSON.stringify(artifact.rawData, null, 2)}</code>
+            </pre>
+          ) : (
+            <div className="space-y-3">
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h4 className="font-medium text-blue-900 mb-2">Mindmap Structure</h4>
+                <div className="text-sm text-blue-800">
+                  <p><strong>Title:</strong> {artifact.rawData.title || 'Untitled'}</p>
+                  <p><strong>Description:</strong> {artifact.rawData.description || 'No description'}</p>
+                  <p><strong>Topics:</strong> {artifact.rawData.children?.length || 0}</p>
+                  <p><strong>Difficulty:</strong> {artifact.rawData.difficulty || 'Not specified'}</p>
+                  <p><strong>Estimated Hours:</strong> {artifact.rawData.estimatedHours || 'Not specified'}</p>
+                </div>
+              </div>
+              
+              {artifact.rawData.children && artifact.rawData.children.length > 0 && (
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <h5 className="font-medium text-green-900 mb-2">Topics</h5>
+                  <div className="space-y-2">
+                    {artifact.rawData.children.slice(0, 5).map((child: any, index: number) => (
+                      <div key={index} className="text-sm text-green-800">
+                        • {child.title} {child.description && `- ${child.description}`}
+                      </div>
+                    ))}
+                    {artifact.rawData.children.length > 5 && (
+                      <div className="text-sm text-green-600">
+                        ... and {artifact.rawData.children.length - 5} more topics
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
 
-    if (navigator.share) {
+    // For code artifacts, show with syntax highlighting
+    if (['component', 'function', 'class', 'interface', 'type'].includes(type) || 
+        ['typescript', 'javascript', 'tsx', 'jsx', 'python', 'java', 'cpp'].includes(language || '')) {
+      return (
+        <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm">
+          <code>{artifact.content}</code>
+        </pre>
+      );
+    }
+
+    // For HTML, show rendered preview
+    if (type === 'html' || language === 'html') {
+      return (
+        <div className="space-y-3">
+          <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <div dangerouslySetInnerHTML={{ __html: artifact.content }} />
+          </div>
+          <details className="bg-gray-50 p-3 rounded-lg">
+            <summary className="cursor-pointer text-sm font-medium text-gray-700">View HTML Source</summary>
+            <pre className="mt-2 text-xs text-gray-600 overflow-x-auto">
+              <code>{artifact.content}</code>
+            </pre>
+          </details>
+        </div>
+      );
+    }
+
+    // For markdown, show formatted text
+    if (type === 'markdown' || language === 'markdown') {
+      return (
+        <div className="prose prose-sm max-w-none">
+          <div className="whitespace-pre-wrap">{artifact.content}</div>
+        </div>
+      );
+    }
+
+    // For JSON, show formatted
+    if (type === 'json' || language === 'json') {
       try {
-        await navigator.share(shareData);
-      } catch (error) {
-        // Fallback to copying URL
-        navigator.clipboard.writeText(window.location.href);
+        const parsed = JSON.parse(artifact.content);
+        return (
+          <pre className="bg-gray-50 p-4 rounded-lg overflow-x-auto text-sm">
+            <code>{JSON.stringify(parsed, null, 2)}</code>
+          </pre>
+        );
+      } catch {
+        return (
+          <pre className="bg-gray-50 p-4 rounded-lg overflow-x-auto text-sm">
+            <code>{artifact.content}</code>
+          </pre>
+        );
       }
-    } else {
-      navigator.clipboard.writeText(window.location.href);
-    }
-  };
-
-  const handleCleanup = async () => {
-    try {
-      const cleanedCount = await cleanupDuplicates();
-      if (cleanedCount > 0) {
-        alert(`Cleanup complete! Removed ${cleanedCount} duplicate artifacts.`);
-      } else {
-        alert('No duplicates found. Your artifacts are already clean!');
-      }
-    } catch (error) {
-      console.error('Cleanup failed:', error);
-      alert('Cleanup failed. Please check the console for details.');
-    }
-  };
-
-  const renderArtifactContent = () => {
-    if (!currentArtifact) {
-      return <WelcomeScreen />;
     }
 
-    switch (currentArtifact.type) {
-      case 'mindmap':
-        return <MindMapCanvas data={currentArtifact.data} isStreaming={currentArtifact.isStreaming} />;
-      case 'skill-atom':
-        return <SkillAtomBuilder data={currentArtifact.data} isStreaming={currentArtifact.isStreaming} />;
-      case 'drill':
-        return <DrillPreview data={currentArtifact.data} isStreaming={currentArtifact.isStreaming} />;
-      case 'progress':
-        return <ProgressViewer data={currentArtifact.data} isStreaming={currentArtifact.isStreaming} />;
-      default:
-        return <WelcomeScreen />;
-    }
+    // Default: show as plain text
+    return (
+      <pre className="bg-gray-50 p-4 rounded-lg overflow-x-auto text-sm whitespace-pre-wrap">
+        {artifact.content}
+      </pre>
+    );
   };
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className={cn("border border-gray-200 rounded-lg overflow-hidden", className)}>
       {/* Header */}
-      <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-6 py-4">
+      <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {currentArtifact ? (
-              <>
-                {(() => {
-                  const Icon = ARTIFACT_ICONS[currentArtifact.type];
-                  return <Icon className="h-5 w-5 text-primary" />;
-                })()}
-                <div>
-                  <h1 className="text-lg font-semibold">{currentArtifact.title}</h1>
-                  <p className="text-sm text-muted-foreground">
-                    {ARTIFACT_TITLES[currentArtifact.type]}
-                    {currentArtifact.isStreaming && (
-                      <span className="ml-2 inline-flex items-center gap-1">
-                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                        <span className="text-green-600 text-xs font-medium">Live</span>
-                      </span>
-                    )}
-                  </p>
-                </div>
-              </>
-            ) : (
-              <>
-                <FileText className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <h1 className="text-lg font-semibold">AI Learning Path Creator</h1>
-                  <p className="text-sm text-muted-foreground">Start a conversation to begin</p>
-                </div>
-              </>
+            {collapsible && (
+              <button
+                onClick={() => setIsCollapsed(!isCollapsed)}
+                className="text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </button>
             )}
+            
+            <div className="flex items-center gap-2">
+              {languageIcons[artifact.metadata.language || 'text'] || <FileText className="h-4 w-4" />}
+              <span className="font-medium text-gray-900">{artifact.metadata.title}</span>
+              <span className="text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded">
+                {languageNames[artifact.metadata.language || 'text'] || artifact.metadata.type}
+              </span>
+            </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (showSavedMindmaps) {
-                  setShowSavedMindmaps(false);
-                } else {
-                  loadSavedMindmaps();
-                  setShowSavedMindmaps(true);
-                }
-              }}
-              className="gap-2"
+            <button
+              onClick={handleCopy}
+              className={cn(
+                "flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors",
+                copied
+                  ? "bg-green-100 text-green-700"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              )}
             >
-              <Clock className="h-4 w-4" />
-              {showSavedMindmaps ? 'Hide Saved' : 'View Saved'}
-            </Button>
-            {artifacts.length > 1 && (
-              <Button variant="outline" size="sm" onClick={handleCleanup}>
-                <Trash2 className="h-4 w-4" />
-                Cleanup Duplicates
-              </Button>
-            )}
-            {currentArtifact && (
-              <>
-                <Button variant="outline" size="sm" onClick={handleShare}>
-                  <Share className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleExport}>
-                  <Download className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="sm">
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </>
-            )}
+              <Copy className="h-3 w-3" />
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+            
+            <button
+              onClick={handleDownload}
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+            >
+              <Download className="h-3 w-3" />
+              Download
+            </button>
           </div>
         </div>
 
-        {/* Saved Mindmaps Dropdown */}
-        {showSavedMindmaps && (
-          <div className="mt-4 p-3 bg-muted/20 border rounded-lg">
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              Saved Learning Paths
-            </h3>
-            {isLoadingSaved ? (
-              <div className="text-center py-4">
-                <div className="w-6 h-6 border border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                <span className="text-sm text-muted-foreground">Loading saved mindmaps...</span>
+        {/* Metadata Bar */}
+        {showMetadata && (
+          <div className="mt-3 pt-3 border-t border-gray-200">
+            <div className="flex items-center gap-4 text-xs text-gray-600">
+              <div className="flex items-center gap-1">
+                <User className="h-3 w-3" />
+                {artifact.metadata.userId}
               </div>
-            ) : savedMindmaps.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">No saved mindmaps found.</p>
-            ) : (
-              <div className="grid sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto">
-                {savedMindmaps.map((project) => (
-                  <div
-                    key={project.id}
-                    className="flex items-center justify-between p-3 bg-background rounded border hover:bg-muted/50 cursor-pointer"
-                    onClick={() => handleLoadSavedMindmap(project)}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-sm font-medium truncate">{project.title}</h4>
-                      {project.description && (
-                        <p className="text-xs text-muted-foreground truncate">{project.description}</p>
-                      )}
-                    </div>
-                    <div className="text-xs text-muted-foreground ml-2 text-right">
-                      <div>{project.metadata?.totalNodes || 0} topics</div>
-                      <div>{project.metadata?.estimatedTotalHours || 0} hours</div>
-                    </div>
-                  </div>
-                ))}
+              
+              <div className="flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                {formatDate(artifact.metadata.created_at)}
+              </div>
+              
+              <div className="flex items-center gap-1">
+                <Hash className="h-3 w-3" />
+                v{artifact.metadata.version}
+              </div>
+              
+              {artifact.metadata.size && (
+                <div className="flex items-center gap-1">
+                  <FileText className="h-3 w-3" />
+                  {formatFileSize(artifact.metadata.size)}
+                </div>
+              )}
+              
+              {artifact.metadata.framework && (
+                <div className="flex items-center gap-1">
+                  <Code className="h-3 w-3" />
+                  {artifact.metadata.framework}
+                </div>
+              )}
+            </div>
+
+            {/* Tags */}
+            {artifact.metadata.tags && artifact.metadata.tags.length > 0 && (
+              <div className="mt-2 flex items-center gap-2">
+                <Tag className="h-3 w-3 text-gray-500" />
+                <div className="flex gap-1">
+                  {artifact.metadata.tags.map((tag, index) => (
+                    <span
+                      key={index}
+                      className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded-full"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* Artifact Tabs */}
-        {artifacts.length > 1 && (
-          <div className="flex items-center gap-1 mt-4 overflow-x-auto">
-            {artifacts.map((artifact) => {
-              const Icon = ARTIFACT_ICONS[artifact.type];
-              const isActive = currentArtifact?.id === artifact.id;
-              
-              return (
-                <Button
-                  key={artifact.id}
-                  variant={isActive ? 'default' : 'ghost'}
-                  size="sm"
-                  className={cn(
-                    'shrink-0 gap-2',
-                    isActive && 'bg-primary text-primary-foreground'
-                  )}
-                  onClick={() => useArtifactStore.getState().setCurrentArtifact(artifact.id)}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span className="truncate max-w-32">{artifact.title}</span>
-                </Button>
-              );
-            })}
+            {/* Description */}
+            {artifact.metadata.description && (
+              <div className="mt-2 text-sm text-gray-700">
+                {artifact.metadata.description}
+              </div>
+            )}
           </div>
         )}
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden">
-        {renderArtifactContent()}
-      </div>
+      {!isCollapsed && (
+        <div className="p-4">
+          {renderContent()}
+        </div>
+      )}
     </div>
   );
 }

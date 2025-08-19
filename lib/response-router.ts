@@ -197,3 +197,27 @@ export function getHandlerDescription(handler: string): string {
   };
   return descriptions[handler as keyof typeof descriptions] || 'Unknown handler';
 }
+
+// Test function to verify response routing decisions
+export function testResponseRouting() {
+  console.log("=== RESPONSE ROUTING TESTS ===");
+  
+  // Simulate an edit_existing intent result (like we just tested)
+  const editIntent = {
+    intent: 'edit_existing' as const,
+    confidence: 0.9,
+    reasoning: "Message contains editing words and there is an active mindmap",
+    extractedEntities: ['change']
+  };
+  
+  // Test with current mindmap present
+  const mockMindmap = { id: 'root', title: 'Test Course', children: [] };
+  
+  const routeResult = routeIntent(editIntent, mockMindmap);
+  
+  console.log("\nRouting Result for edit_existing:");
+  console.log(`Handler: ${routeResult.handler}`);
+  console.log(`ShouldUseTools: ${routeResult.shouldUseTools}`);
+  console.log(`SystemPrompt: ${routeResult.systemPrompt.substring(0, 100)}...`);
+  console.log(`Context:`, routeResult.context);
+}

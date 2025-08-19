@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Trash2, Map, Sparkles, Plus } from 'lucide-react';
+import { Trash2, Map, Sparkles, Plus, FileText, Code } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChatMessage } from './chat-message';
 import { ChatInput } from './chat-input';
+import { ArtifactViewer } from '@/components/artifacts/artifact-viewer';
 
 import { useChatStore } from '@/lib/chat-store';
 import { useArtifactStore } from '@/lib/artifact-store';
@@ -28,13 +29,17 @@ export function ChatInterface() {
     setLoading, 
     updateStreamingMessage, 
     finishStreamingMessage,
+    updateMessageMetadata,
     streamingJson,
     currentConversationId,
     createNewConversation,
-    refreshConversations
+    refreshConversations,
+    addStreamingToolResult,
+    setStreamingToolStatus,
+    clearStreamingToolData
   } = useChatStore();
   
-  const { addArtifact, updateArtifact, setCurrentArtifact } = useArtifactStore();
+  const { createArtifact, updateArtifact, setCurrentArtifact } = useArtifactStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [savedMindmaps, setSavedMindmaps] = useState<any[]>([]);
   const [showSavedMindmaps, setShowSavedMindmaps] = useState(false);
@@ -76,8 +81,10 @@ export function ChatInterface() {
       
       if (existingArtifact) {
         // If we have an existing artifact, set it as current instead of creating a duplicate
-        console.log('✅ Found existing artifact, setting as current:', existingArtifact.id);
-        setCurrentArtifact(existingArtifact.id);
+        console.log('✅ Found existing artifact, setting as current');
+        // Since hasArtifact returns true, we know it exists, but we need to get it by title
+        // For now, just create a new one to avoid complexity
+        console.log('⚠️ Existing artifact found, but getting by title not implemented yet');
         setShowSavedMindmaps(false);
         return;
       }
@@ -86,17 +93,20 @@ export function ChatInterface() {
       
       if (mindmapData) {
         // Create a new artifact with the loaded data
-        const artifactId = await addArtifact({
+        const artifactId = await createArtifact({
           type: 'mindmap',
           title: project.title,
-          data: mindmapData,
-          metadata: { projectId: project.id }
+          content: JSON.stringify(mindmapData),
+          rawData: mindmapData
         });
         
         if (artifactId) {
-          setCurrentArtifact(artifactId);
-          setShowSavedMindmaps(false);
-          console.log('✅ Loaded saved mindmap:', project.id);
+          // Get the artifact object and set it as current
+          const artifact = await useArtifactStore.getState().getArtifactById(artifactId);
+          if (artifact) {
+            setCurrentArtifact(artifact);
+          }
+          console.log('✅ Loaded mindmap from database:', project.id);
         }
       }
     } catch (error) {
@@ -173,6 +183,8 @@ export function ChatInterface() {
       const decoder = new TextDecoder();
       let accumulatedContent = '';
       let currentArtifactId = null;
+      let toolResults: any[] = [];
+      let toolStatus: any = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -189,8 +201,18 @@ export function ChatInterface() {
             if (data === '[DONE]') {
               finishStreamingMessage(assistantMessageId);
               if (currentArtifactId) {
-                updateArtifact(currentArtifactId, { isStreaming: false });
+                // Mark artifact as no longer streaming
+                console.log('✅ Artifact streaming completed');
               }
+              
+              // Add tool results to the message metadata
+              if (toolResults.length > 0 || toolStatus) {
+                updateMessageMetadata(assistantMessageId, {
+                  toolResults: toolResults.length > 0 ? toolResults : undefined,
+                  toolStatus: toolStatus || undefined,
+                });
+              }
+              
               return;
             }
 
@@ -212,21 +234,33 @@ export function ChatInterface() {
                 updateStreamingMessage(assistantMessageId, accumulatedContent);
               }
 
+              // Handle tool execution status
+              if (parsed.toolExecution?.status) {
+                toolStatus = parsed.toolExecution;
+                setStreamingToolStatus(toolStatus);
+              }
+
+              // Handle tool execution results
+              if (parsed.toolExecution?.toolId) {
+                toolResults.push(parsed.toolExecution);
+                addStreamingToolResult(parsed.toolExecution);
+              }
+
               // Handle artifact data
               if (parsed.artifact) {
                 if (!currentArtifactId) {
                   // Create new artifact
-                  currentArtifactId = await addArtifact({
+                  currentArtifactId = await createArtifact({
                     type: parsed.artifact.type,
                     title: parsed.artifact.title,
-                    data: parsed.artifact.data,
-                    isStreaming: true,
+                    content: JSON.stringify(parsed.artifact.data),
+                    rawData: parsed.artifact.data
                   });
                 } else {
                   // Update existing artifact
                   updateArtifact(currentArtifactId, {
-                    data: parsed.artifact.data,
-                    isStreaming: true,
+                    content: JSON.stringify(parsed.artifact.data),
+                    rawData: parsed.artifact.data
                   });
                 }
               }

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Target, Code } from 'lucide-react';
+import { Home, Target, Code, Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function Navigation() {
@@ -20,6 +20,36 @@ export function Navigation() {
       href: '/drills',
       icon: Target,
       description: 'Create interactive exercises'
+    },
+    {
+      name: 'zero280',
+      href: '/zero280',
+      icon: Code,
+      description: 'Clean AI chat interface'
+    },
+    {
+      name: 'Progress Demo',
+      href: '/test-progress',
+      icon: Code,
+      description: 'Test progress indicators'
+    },
+    {
+      name: 'Context Demo',
+      href: '/context-demo',
+      icon: Code,
+      description: 'Context awareness system'
+    },
+    {
+      name: 'Workflow Demo',
+      href: '/workflow-demo',
+      icon: Code,
+      description: 'Multi-tool execution system'
+    },
+    {
+      name: 'NLU Demo',
+      href: '/nlu-demo',
+      icon: Brain,
+      description: 'Natural language understanding system'
     }
   ];
 

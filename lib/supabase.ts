@@ -19,6 +19,8 @@ export interface Database {
           title: string
           created_at: string
           updated_at: string
+          user_id?: string
+          project_id?: string
           metadata?: any
         }
         Insert: {
@@ -26,6 +28,8 @@ export interface Database {
           title: string
           created_at?: string
           updated_at?: string
+          user_id?: string
+          project_id?: string
           metadata?: any
         }
         Update: {
@@ -33,6 +37,8 @@ export interface Database {
           title?: string
           created_at?: string
           updated_at?: string
+          user_id?: string
+          project_id?: string
           metadata?: any
         }
       }

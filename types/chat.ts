@@ -14,6 +14,7 @@ export interface Conversation {
   created_at: string;
   updated_at: string;
   user_id?: string;
+  project_id?: string;
   metadata?: any;
 }
 

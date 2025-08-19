@@ -7,6 +7,7 @@ import { useArtifactStore } from '@/lib/artifact-store';
 import { MindmapStore } from '@/lib/mindmap-store';
 import { useState } from 'react';
 import { MindMapNode } from '@/types/artifacts';
+import { ToolResultDisplay, ToolExecutionStatus } from './tool-result-display';
 
 interface ChatMessageProps {
   message: Message;
@@ -125,10 +126,15 @@ export function ChatMessage({ message }: ChatMessageProps) {
     }
   };
 
+  // Check if message has tool execution data
+  const hasToolExecution = message.metadata?.toolExecution;
+  const hasToolResults = message.metadata?.toolResults;
+  const hasToolStatus = message.metadata?.toolStatus;
+
   return (
     <div className={cn(
-      'group relative w-full px-4 py-6 transition-all duration-200',
-      isUser ? 'bg-background' : 'bg-slate-50/50 hover:bg-slate-50/70'
+      'group relative w-full transition-all duration-200',
+      isUser ? 'px-4 py-6 bg-background' : 'px-4 py-3'
     )}>
       <div className="max-w-4xl mx-auto">
         <div className="flex gap-4">
@@ -172,10 +178,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
             {/* Message Text */}
             <div className={cn(
-              'relative rounded-2xl px-4 py-3 transition-all duration-200',
+              'relative transition-all duration-200',
               isUser 
-                ? 'bg-blue-500 text-white shadow-sm' 
-                : 'bg-white border border-slate-200 shadow-sm hover:shadow-md'
+                ? 'rounded-2xl px-4 py-3 bg-blue-500 text-white shadow-sm' 
+                : 'px-0 py-0 bg-transparent border-0 shadow-none'
             )}>
               <div className={cn(
                 'text-sm leading-relaxed whitespace-pre-wrap break-words',
@@ -199,7 +205,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 <button
                   onClick={handleCopy}
                   className={cn(
-                    'absolute top-2 right-2 p-1.5 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100',
+                    'absolute top-0 right-0 p-1.5 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100',
                     'bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800',
                     'hover:scale-105 active:scale-95'
                   )}
@@ -212,6 +218,27 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 </button>
               )}
             </div>
+
+            {/* Tool Execution Status */}
+            {hasToolStatus && (
+              <ToolExecutionStatus 
+                status={hasToolStatus.status} 
+                toolCount={hasToolStatus.toolCount} 
+              />
+            )}
+
+            {/* Tool Execution Results */}
+            {hasToolResults && Array.isArray(hasToolResults) && hasToolResults.map((toolResult: any, index: number) => (
+              <ToolResultDisplay 
+                key={`${toolResult.toolId || index}`}
+                toolExecution={toolResult} 
+              />
+            ))}
+
+            {/* Single Tool Execution Result */}
+            {hasToolExecution && !hasToolResults && (
+              <ToolResultDisplay toolExecution={hasToolExecution} />
+            )}
             
             {/* Mindmap Preview - Only show if not currently streaming */}
             {hasMindmap && mindmapData && !isStreaming && (

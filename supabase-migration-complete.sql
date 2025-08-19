@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   user_id UUID,
+  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
   metadata JSONB DEFAULT '{}'::jsonb
 );
 
@@ -56,6 +57,7 @@ CREATE TABLE IF NOT EXISTS skill_atoms (
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_updated_at ON conversations(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conversations_project_id ON conversations(project_id);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id);

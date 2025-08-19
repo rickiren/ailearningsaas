@@ -1,466 +1,440 @@
 import { create } from 'zustand';
-import { Artifact, ArtifactState } from '@/types/artifacts';
-import { MindmapStore } from './mindmap-store';
+import { artifactStorage, Artifact, ArtifactMetadata, ArtifactFilter } from './artifact-storage';
+
+interface ArtifactState {
+  // State
+  artifacts: Artifact[];
+  currentArtifact: Artifact | null;
+  isLoading: boolean;
+  error: string | null;
+  searchQuery: string;
+  activeFilters: ArtifactFilter;
+  selectedArtifacts: string[]; // IDs of selected artifacts
+  viewMode: 'grid' | 'list' | 'detail';
+  sortBy: 'created_at' | 'updated_at' | 'title' | 'type' | 'size';
+  sortOrder: 'asc' | 'desc';
+  
+  // Actions
+  // Loading and initialization
+  loadArtifacts: () => Promise<void>;
+  loadArtifact: (id: string) => Promise<void>;
+  refreshArtifacts: () => Promise<void>;
+  
+  // CRUD operations
+  createArtifact: (artifact: Omit<Artifact, 'metadata'> & { title: string; type: ArtifactMetadata['type'] }) => Promise<string>;
+  updateArtifact: (id: string, updates: Partial<Artifact>) => Promise<boolean>;
+  deleteArtifact: (id: string) => Promise<boolean>;
+  duplicateArtifact: (id: string, newTitle?: string) => Promise<string>;
+  
+  // Selection and navigation
+  setCurrentArtifact: (artifact: Artifact | null) => void;
+  selectArtifact: (id: string, selected?: boolean) => void;
+  selectAllArtifacts: (selected: boolean) => void;
+  clearSelection: () => void;
+  
+  // Search and filtering
+  setSearchQuery: (query: string) => void;
+  setActiveFilters: (filters: Partial<ArtifactFilter>) => void;
+  clearFilters: () => void;
+  
+  // View and sorting
+  setViewMode: (mode: 'grid' | 'list' | 'detail') => void;
+  setSortBy: (sortBy: 'created_at' | 'updated_at' | 'title' | 'type' | 'size') => void;
+  setSortOrder: (order: 'asc' | 'desc') => void;
+  
+  // Bulk operations
+  deleteSelectedArtifacts: () => Promise<void>;
+  exportSelectedArtifacts: () => Promise<string>;
+  bulkUpdateTags: (tag: string, add: boolean) => Promise<void>;
+  
+  // Statistics and analytics
+  getStats: () => Promise<{
+    total: number;
+    byType: Record<string, number>;
+    byLanguage: Record<string, number>;
+    totalSize: number;
+    averageSize: number;
+  }>;
+  
+  // Utility methods
+  getArtifactById: (id: string) => Artifact | null;
+  getArtifactsByType: (type: ArtifactMetadata['type']) => Artifact[];
+  getFilteredArtifacts: () => Artifact[];
+  hasArtifact: (title: string, id?: string) => boolean;
+  
+  // Error handling
+  setError: (error: string | null) => void;
+  clearError: () => void;
+}
 
 export const useArtifactStore = create<ArtifactState>((set, get) => ({
-  currentArtifact: null,
+  // Initial state
   artifacts: [],
-  streamingData: null,
+  currentArtifact: null,
+  isLoading: false,
+  error: null,
+  searchQuery: '',
+  activeFilters: {},
+  selectedArtifacts: [],
+  viewMode: 'grid',
+  sortBy: 'created_at',
+  sortOrder: 'desc',
 
-  addArtifact: async (artifactData) => {
-    console.log('🔄 ArtifactStore.addArtifact called with:', {
-      type: artifactData.type,
-      title: artifactData.title,
-      hasData: !!artifactData.data,
-      dataKeys: artifactData.data ? Object.keys(artifactData.data) : [],
-      isStreaming: artifactData.isStreaming
-    });
+  // Loading and initialization
+  loadArtifacts: async () => {
+    try {
+      set({ isLoading: true, error: null });
+      const artifacts = await artifactStorage.listArtifacts();
+      set({ artifacts, isLoading: false });
+    } catch (error) {
+      set({ 
+        error: error instanceof Error ? error.message : 'Failed to load artifacts', 
+        isLoading: false 
+      });
+    }
+  },
 
-    // Check for duplicate artifacts to prevent database duplication
-    const { artifacts } = get();
-    const isDuplicate = artifacts.some(existingArtifact => {
-      // Check if this is a duplicate mindmap with the same title and similar data
-      if (existingArtifact.type === 'mindmap' && 
-          artifactData.type === 'mindmap' &&
-          existingArtifact.title === artifactData.title) {
-        
-        // If the existing artifact is still streaming, consider it a duplicate
-        if (existingArtifact.isStreaming && artifactData.isStreaming) {
-          console.log('⚠️ Duplicate streaming artifact detected, updating existing one');
-          return true;
-        }
-        
-        // If both are complete, check if they have the same data structure
-        if (!existingArtifact.isStreaming && !artifactData.isStreaming) {
-          const existingKeys = Object.keys(existingArtifact.data || {});
-          const newKeys = Object.keys(artifactData.data || {});
-          if (existingKeys.length === newKeys.length) {
-            console.log('⚠️ Duplicate complete artifact detected, skipping creation');
-            return true;
+  loadArtifact: async (id: string) => {
+    try {
+      set({ isLoading: true, error: null });
+      const artifact = await artifactStorage.getArtifact(id);
+      if (artifact) {
+        set({ currentArtifact: artifact, isLoading: false });
+      } else {
+        set({ error: 'Artifact not found', isLoading: false });
+      }
+    } catch (error) {
+      set({ 
+        error: error instanceof Error ? error.message : 'Failed to load artifact', 
+        isLoading: false 
+      });
+    }
+  },
+
+  refreshArtifacts: async () => {
+    await get().loadArtifacts();
+  },
+
+  // CRUD operations
+  createArtifact: async (artifact) => {
+    try {
+      set({ isLoading: true, error: null });
+      const id = await artifactStorage.saveArtifact(artifact);
+      await get().loadArtifacts(); // Refresh the list
+      set({ isLoading: false });
+      return id;
+    } catch (error) {
+      set({ 
+        error: error instanceof Error ? error.message : 'Failed to create artifact', 
+        isLoading: false 
+      });
+      throw error;
+    }
+  },
+
+  updateArtifact: async (id, updates) => {
+    try {
+      set({ isLoading: true, error: null });
+      const success = await artifactStorage.updateArtifact(id, updates);
+      if (success) {
+        await get().loadArtifacts(); // Refresh the list
+        // Update current artifact if it's the one being updated
+        const current = get().currentArtifact;
+        if (current && current.metadata.id === id) {
+          const updated = await artifactStorage.getArtifact(id);
+          if (updated) {
+            set({ currentArtifact: updated });
           }
         }
       }
+      set({ isLoading: false });
+      return success;
+    } catch (error) {
+      set({ 
+        error: error instanceof Error ? error.message : 'Failed to update artifact', 
+        isLoading: false 
+      });
       return false;
-    });
-
-    if (isDuplicate) {
-      console.log('🔄 Duplicate artifact detected, updating existing one instead');
-      
-      // Find the existing artifact and update it
-      const existingArtifact = artifacts.find(a => 
-        a.type === artifactData.type && 
-        a.title === artifactData.title
-      );
-      
-      if (existingArtifact) {
-        // Update the existing artifact instead of creating a new one
-        get().updateArtifact(existingArtifact.id, {
-          data: artifactData.data,
-          isStreaming: artifactData.isStreaming,
-          updatedAt: new Date()
-        });
-        
-        // Set as current artifact
-        set({ currentArtifact: existingArtifact });
-        
-        return existingArtifact.id;
-      }
     }
+  },
 
-    const artifact: Artifact = {
-      ...artifactData,
-      id: crypto.randomUUID(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    console.log('🆕 Created artifact object:', {
-      id: artifact.id,
-      type: artifact.type,
-      title: artifact.title
-    });
-
-    set((state) => {
-      const newState = {
-        artifacts: [...state.artifacts, artifact],
-        currentArtifact: artifact,
-      };
-      
-      console.log('🔄 Artifact store state updated:', {
-        totalArtifacts: newState.artifacts.length,
-        currentArtifactId: newState.currentArtifact?.id,
-        currentArtifactType: newState.currentArtifact?.type,
-        currentArtifactTitle: newState.currentArtifact?.title
-      });
-      
-      return newState;
-    });
-
-    // If this is a mindmap, save it to the database
-    if (artifactData.type === 'mindmap' && artifactData.data) {
-      console.log('🔄 Attempting to save mindmap to database:', {
-        type: artifactData.type,
-        title: artifactData.title,
-        hasData: !!artifactData.data,
-        dataKeys: Object.keys(artifactData.data || {}),
-        dataStructure: {
-          hasId: !!artifactData.data.id,
-          hasTitle: !!artifactData.data.title,
-          hasChildren: !!artifactData.data.children,
-          childrenCount: artifactData.data.children?.length || 0
+  deleteArtifact: async (id) => {
+    try {
+      set({ isLoading: true, error: null });
+      const success = await artifactStorage.deleteArtifact(id);
+      if (success) {
+        await get().loadArtifacts(); // Refresh the list
+        // Clear current artifact if it's the one being deleted
+        const current = get().currentArtifact;
+        if (current && current.metadata.id === id) {
+          set({ currentArtifact: null });
         }
-      });
-      
-      try {
-        const result = await MindmapStore.saveMindmap(
-          artifactData.data,
-          artifactData.title,
-          artifactData.data.description
-        );
-        
-        console.log('✅ Mindmap saved to database successfully:', result);
-        
-        // Store the database ID in the artifact metadata
-        get().updateArtifact(artifact.id, {
-          metadata: {
-            ...artifact.metadata,
-            projectId: result.projectId,
-            skillAtomIds: result.skillAtomIds
-          }
-        });
-
-        console.log('✅ Artifact metadata updated with database IDs');
-      } catch (error) {
-        console.error('❌ Failed to save mindmap to database:', error);
-        console.error('Error details:', {
-          message: error instanceof Error ? error.message : 'Unknown error',
-          stack: error instanceof Error ? error.stack : 'No stack trace',
-          artifactData: artifactData
-        });
-        
-        // Still create the artifact in the UI even if database save fails
-        console.log('⚠️ Continuing with UI artifact creation despite database error');
+        // Remove from selection
+        set(state => ({
+          selectedArtifacts: state.selectedArtifacts.filter(selectedId => selectedId !== id)
+        }));
       }
-    } else {
-      console.log('⚠️ Not saving to database:', {
-        type: artifactData.type,
-        hasData: !!artifactData.data,
-        reason: artifactData.type !== 'mindmap' ? 'Not a mindmap' : 'No data'
+      set({ isLoading: false });
+      return success;
+    } catch (error) {
+      set({ 
+        error: error instanceof Error ? error.message : 'Failed to delete artifact', 
+        isLoading: false 
       });
-    }
-
-    return artifact.id;
-  },
-
-  updateArtifact: (id, updates) => {
-    set((state) => ({
-      artifacts: state.artifacts.map((artifact) =>
-        artifact.id === id
-          ? { ...artifact, ...updates, updatedAt: new Date() }
-          : artifact
-      ),
-      currentArtifact:
-        state.currentArtifact?.id === id
-          ? { ...state.currentArtifact, ...updates, updatedAt: new Date() }
-          : state.currentArtifact,
-    }));
-
-    // If updating a mindmap and it has a project ID, update the database
-    const artifact = get().artifacts.find(a => a.id === id);
-    if (artifact?.type === 'mindmap' && artifact.metadata?.projectId && updates.data) {
-      console.log('🔄 Updating mindmap in database:', artifact.metadata.projectId);
-      
-      // Check if this is a major update (adding/removing modules) or just editing existing ones
-      const currentData = artifact.data;
-      const newData = updates.data;
-      
-      // For now, use the full update method. In the future, we could implement more granular updates
-      MindmapStore.updateMindmap(artifact.metadata.projectId, newData)
-        .then(() => console.log('✅ Mindmap updated in database'))
-        .catch(error => console.error('❌ Failed to update mindmap in database:', error));
+      return false;
     }
   },
 
-  setCurrentArtifact: (id) => {
-    const { artifacts } = get();
-    const artifact = id ? artifacts.find((a) => a.id === id) || null : null;
+  duplicateArtifact: async (id, newTitle) => {
+    try {
+      set({ isLoading: true, error: null });
+      const original = get().artifacts.find(a => a.metadata.id === id);
+      if (!original) {
+        throw new Error('Original artifact not found');
+      }
+
+      const duplicatedArtifact: Omit<Artifact, 'metadata'> & { title: string; type: ArtifactMetadata['type'] } = {
+        content: original.content,
+        rawData: original.rawData,
+        title: newTitle || `${original.metadata.title} (Copy)`,
+        type: original.metadata.type
+      };
+
+      const newId = await artifactStorage.saveArtifact(duplicatedArtifact);
+      await get().loadArtifacts(); // Refresh the list
+      set({ isLoading: false });
+      return newId;
+    } catch (error) {
+      set({ 
+        error: error instanceof Error ? error.message : 'Failed to duplicate artifact', 
+        isLoading: false 
+      });
+      throw error;
+    }
+  },
+
+  // Selection and navigation
+  setCurrentArtifact: (artifact) => {
     set({ currentArtifact: artifact });
   },
 
-  updateStreamingData: (data) => {
-    set({ streamingData: data });
-    
-    // If there's a current artifact being streamed, update it
-    const { currentArtifact } = get();
-    if (currentArtifact?.isStreaming) {
-      get().updateArtifact(currentArtifact.id, { 
-        data: { ...currentArtifact.data, ...data },
-        isStreaming: true
-      });
-    }
+  selectArtifact: (id, selected = true) => {
+    set(state => ({
+      selectedArtifacts: selected
+        ? [...state.selectedArtifacts, id]
+        : state.selectedArtifacts.filter(selectedId => selectedId !== id)
+    }));
   },
 
-  clearStreamingData: () => {
-    set({ streamingData: null });
-    
-    // Mark current artifact as no longer streaming
-    const { currentArtifact } = get();
-    if (currentArtifact?.isStreaming) {
-      get().updateArtifact(currentArtifact.id, { isStreaming: false });
-    }
-  },
-
-  // New method to load mindmaps from database
-  loadMindmapFromDatabase: async (projectId: string) => {
-    try {
-      const mindmapData = await MindmapStore.loadMindmap(projectId);
-      if (mindmapData) {
-        // Get project details to get the actual title
-        const projects = await MindmapStore.getUserMindmaps();
-        const project = projects.find(p => p.id === projectId);
-        const projectTitle = project?.title || 'Unknown Project';
-        
-        // Check if an artifact with this title already exists
-        const existingArtifact = get().hasArtifact(projectTitle, projectId);
-        
-        if (existingArtifact) {
-          // If we have an existing artifact, set it as current instead of creating a duplicate
-          console.log('✅ Found existing artifact, setting as current:', existingArtifact.id);
-          set({ currentArtifact: existingArtifact });
-          return existingArtifact.id;
-        }
-        
-        // Create new artifact only if none exists
-        const artifact: Artifact = {
-          id: crypto.randomUUID(),
-          type: 'mindmap',
-          title: projectTitle,
-          data: mindmapData,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          metadata: { projectId }
-        };
-
-        set((state) => ({
-          artifacts: [...state.artifacts, artifact],
-          currentArtifact: artifact,
-        }));
-
-        return artifact.id;
-      }
-    } catch (error) {
-      console.error('Failed to load mindmap from database:', error);
-    }
-    return null;
-  },
-
-  // New method to get all saved mindmaps
-  getSavedMindmaps: async () => {
-    try {
-      const projects = await MindmapStore.getUserMindmaps();
-      return projects;
-    } catch (error) {
-      console.error('Failed to get saved mindmaps:', error);
-      return [];
-    }
-  },
-
-  // Check if an artifact with the given title or project ID already exists
-  hasArtifact: (title: string, projectId?: string) => {
-    const { artifacts } = get();
-    const existing = artifacts.find(
-      artifact => artifact.type === 'mindmap' && 
-      (artifact.title === title || (projectId && artifact.metadata?.projectId === projectId))
-    );
-    
-    if (existing) {
-      console.log('🔍 Found existing artifact:', {
-        id: existing.id,
-        title: existing.title,
-        projectId: existing.metadata?.projectId,
-        searchTitle: title,
-        searchProjectId: projectId
-      });
+  selectAllArtifacts: (selected) => {
+    if (selected) {
+      const allIds = get().artifacts.map(a => a.metadata.id);
+      set({ selectedArtifacts: allIds });
     } else {
-      console.log('🔍 No existing artifact found for:', { title, projectId });
+      set({ selectedArtifacts: [] });
     }
-    
-    return existing;
   },
 
-  // Clean up duplicate artifacts and database entries
-  cleanupDuplicates: async () => {
+  clearSelection: () => {
+    set({ selectedArtifacts: [] });
+  },
+
+  // Search and filtering
+  setSearchQuery: (query) => {
+    set({ searchQuery: query });
+  },
+
+  setActiveFilters: (filters) => {
+    set(state => ({
+      activeFilters: { ...state.activeFilters, ...filters }
+    }));
+  },
+
+  clearFilters: () => {
+    set({ activeFilters: {}, searchQuery: '' });
+  },
+
+  // View and sorting
+  setViewMode: (mode) => {
+    set({ viewMode: mode });
+  },
+
+  setSortBy: (sortBy) => {
+    set({ sortBy });
+  },
+
+  setSortOrder: (order) => {
+    set({ sortOrder: order });
+  },
+
+  // Bulk operations
+  deleteSelectedArtifacts: async () => {
+    const selectedIds = get().selectedArtifacts;
+    if (selectedIds.length === 0) return;
+
     try {
-      console.log('🧹 Starting duplicate cleanup...');
-      
-      // Get all artifacts and group by title
-      const { artifacts } = get();
-      const titleGroups = new Map<string, Artifact[]>();
-      
-      artifacts.forEach(artifact => {
-        if (artifact.type === 'mindmap') {
-          const key = artifact.title;
-          if (!titleGroups.has(key)) {
-            titleGroups.set(key, []);
-          }
-          titleGroups.get(key)!.push(artifact);
-        }
+      set({ isLoading: true, error: null });
+      for (const id of selectedIds) {
+        await artifactStorage.deleteArtifact(id);
+      }
+      await get().loadArtifacts(); // Refresh the list
+      set({ selectedArtifacts: [], isLoading: false });
+    } catch (error) {
+      set({ 
+        error: error instanceof Error ? error.message : 'Failed to delete selected artifacts', 
+        isLoading: false 
       });
-      
-      // Find duplicates and keep only the most recent complete one
-      let cleanedCount = 0;
-      for (const [title, group] of titleGroups) {
-        if (group.length > 1) {
-          console.log(`🧹 Found ${group.length} artifacts with title: ${title}`);
+    }
+  },
+
+  exportSelectedArtifacts: async () => {
+    const selectedIds = get().selectedArtifacts;
+    if (selectedIds.length === 0) return '';
+
+    try {
+      const selectedArtifacts = get().artifacts.filter(a => selectedIds.includes(a.metadata.id));
+      return JSON.stringify(selectedArtifacts, null, 2);
+    } catch (error) {
+      throw new Error('Failed to export selected artifacts');
+    }
+  },
+
+  bulkUpdateTags: async (tag, add) => {
+    const selectedIds = get().selectedArtifacts;
+    if (selectedIds.length === 0) return;
+
+    try {
+      set({ isLoading: true, error: null });
+      for (const id of selectedIds) {
+        const artifact = get().artifacts.find(a => a.metadata.id === id);
+        if (artifact) {
+          const currentTags = artifact.metadata.tags || [];
+          const newTags = add
+            ? [...currentTags, tag].filter((t, i, arr) => arr.indexOf(t) === i) // Remove duplicates
+            : currentTags.filter(t => t !== tag);
           
-          // Sort by creation date, newest first
-          group.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          
-          // Keep the first (newest) complete artifact, remove the rest
-          const toRemove = group.slice(1);
-          console.log(`🧹 Removing ${toRemove.length} duplicate artifacts`);
-          
-          for (const duplicate of toRemove) {
-            // Remove from local state
-            set((state) => ({
-              artifacts: state.artifacts.filter(a => a.id !== duplicate.id),
-              currentArtifact: state.currentArtifact?.id === duplicate.id ? null : state.currentArtifact
-            }));
-            
-            // If it has a database ID, remove from database too
-            if (duplicate.metadata?.projectId) {
-              try {
-                await MindmapStore.deleteMindmap(duplicate.metadata.projectId);
-                console.log(`🗑️ Removed duplicate from database: ${duplicate.metadata.projectId}`);
-              } catch (error) {
-                console.error(`❌ Failed to remove duplicate from database: ${duplicate.metadata.projectId}`, error);
-              }
+          await artifactStorage.updateArtifact(id, {
+            metadata: { 
+              ...artifact.metadata,
+              tags: newTags 
             }
-            
-            cleanedCount++;
-          }
+          });
         }
       }
-      
-      console.log(`✅ Cleanup complete. Removed ${cleanedCount} duplicate artifacts.`);
-      return cleanedCount;
+      await get().loadArtifacts(); // Refresh the list
+      set({ isLoading: false });
     } catch (error) {
-      console.error('❌ Error during cleanup:', error);
-      return 0;
+      set({ 
+        error: error instanceof Error ? error.message : 'Failed to update tags', 
+        isLoading: false 
+      });
     }
   },
 
-  // Add a new module to the current mindmap
-  addModuleToMindmap: async (parentId: string | null, newModule: any) => {
-    try {
-      const { currentArtifact } = get();
-      if (!currentArtifact || currentArtifact.type !== 'mindmap') {
-        throw new Error('No mindmap artifact currently active');
-      }
+  // Statistics and analytics
+  getStats: async () => {
+    return await artifactStorage.getArtifactStats();
+  },
 
-      if (!currentArtifact.metadata?.projectId) {
-        throw new Error('Current mindmap not saved to database');
-      }
+  // Utility methods
+  getArtifactById: (id) => {
+    return get().artifacts.find(a => a.metadata.id === id) || null;
+  },
 
-      console.log('🔄 Adding new module to mindmap:', {
-        projectId: currentArtifact.metadata.projectId,
-        parentId,
-        moduleTitle: newModule.title
-      });
+  getArtifactsByType: (type) => {
+    return get().artifacts.filter(a => a.metadata.type === type);
+  },
 
-      // Add to local state first
-      const updatedData = { ...currentArtifact.data };
-      if (parentId) {
-        // Add as child of specific parent
-        const addToParent = (node: any): any => {
-          if (node.id === parentId) {
-            return {
-              ...node,
-              children: [...(node.children || []), newModule]
-            };
-          }
-          if (node.children) {
-            return {
-              ...node,
-              children: node.children.map(addToParent)
-            };
-          }
-          return node;
-        };
-        updatedData.children = updatedData.children?.map(addToParent) || [];
-      } else {
-        // Add as root level module
-        updatedData.children = [...(updatedData.children || []), newModule];
-      }
+  getFilteredArtifacts: () => {
+    let artifacts = get().artifacts;
+    const { searchQuery, activeFilters, sortBy, sortOrder } = get();
 
-      // Update local state
-      get().updateArtifact(currentArtifact.id, { data: updatedData });
-
-      console.log('✅ Module added to mindmap successfully');
-      return true;
-    } catch (error) {
-      console.error('❌ Error adding module to mindmap:', error);
-      return false;
+    // Apply search
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      artifacts = artifacts.filter(artifact => 
+        artifact.metadata.title.toLowerCase().includes(query) ||
+        artifact.metadata.description?.toLowerCase().includes(query) ||
+        artifact.content.toLowerCase().includes(query) ||
+        artifact.metadata.tags?.some(tag => tag.toLowerCase().includes(query))
+      );
     }
+
+    // Apply filters
+    if (activeFilters.type) {
+      artifacts = artifacts.filter(artifact => artifact.metadata.type === activeFilters.type);
+    }
+    if (activeFilters.tags && activeFilters.tags.length > 0) {
+      artifacts = artifacts.filter(artifact => 
+        activeFilters.tags!.some(tag => artifact.metadata.tags?.includes(tag))
+      );
+    }
+    if (activeFilters.createdAfter) {
+      artifacts = artifacts.filter(artifact => 
+        artifact.metadata.created_at >= activeFilters.createdAfter!
+      );
+    }
+    if (activeFilters.createdBefore) {
+      artifacts = artifacts.filter(artifact => 
+        artifact.metadata.created_at <= activeFilters.createdBefore!
+      );
+    }
+
+    // Apply sorting
+    artifacts.sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      switch (sortBy) {
+        case 'created_at':
+          aValue = new Date(a.metadata.created_at).getTime();
+          bValue = new Date(b.metadata.created_at).getTime();
+          break;
+        case 'updated_at':
+          aValue = new Date(a.metadata.updated_at).getTime();
+          bValue = new Date(b.metadata.updated_at).getTime();
+          break;
+        case 'title':
+          aValue = a.metadata.title.toLowerCase();
+          bValue = b.metadata.title.toLowerCase();
+          break;
+        case 'type':
+          aValue = a.metadata.type;
+          bValue = b.metadata.type;
+          break;
+        case 'size':
+          aValue = a.metadata.size || 0;
+          bValue = b.metadata.size || 0;
+          break;
+        default:
+          aValue = a.metadata.created_at;
+          bValue = b.metadata.created_at;
+      }
+
+      if (sortOrder === 'asc') {
+        return aValue > bValue ? 1 : -1;
+      } else {
+        return aValue < bValue ? 1 : -1;
+      }
+    });
+
+    return artifacts;
+  },
+
+  hasArtifact: (title, id) => {
+    const artifacts = get().artifacts;
+    if (id) {
+      return artifacts.some(a => a.metadata.id === id);
+    }
+    return artifacts.some(a => a.metadata.title === title);
+  },
+
+  // Error handling
+  setError: (error) => {
+    set({ error });
+  },
+
+  clearError: () => {
+    set({ error: null });
   },
 }));
-
-// Set up event listeners immediately
-const setupEventListeners = () => {
-  console.log('🔧 Setting up artifact store event listeners...');
-  
-  // Listen for mindmap detection
-  window.addEventListener('mindmap-detected', ((event: Event) => {
-    console.log('🎯 Received mindmap-detected event:', event);
-    const customEvent = event as CustomEvent;
-    const { type, title, data } = customEvent.detail;
-    console.log('📝 Creating new mindmap artifact:', { type, title });
-    useArtifactStore.getState().addArtifact({
-      type,
-      title,
-      data,
-    });
-  }) as EventListener);
-
-  // Listen for mindmap streaming updates
-  window.addEventListener('mindmap-streaming', ((event: Event) => {
-    console.log('🔄 Received mindmap-streaming event:', event);
-    const customEvent = event as CustomEvent;
-    const { type, title, data, isStreaming } = customEvent.detail;
-    console.log('📝 Updating mindmap artifact:', { type, title, isStreaming });
-    const artifactStore = useArtifactStore.getState();
-    const currentArtifact = artifactStore.currentArtifact;
-    
-    if (currentArtifact?.type === 'mindmap') {
-      // Update existing mindmap
-      console.log('🔄 Updating existing mindmap:', currentArtifact.id);
-      artifactStore.updateArtifact(currentArtifact.id, {
-        data,
-        isStreaming,
-      });
-    } else {
-      // Create new mindmap
-      console.log('🆕 Creating new mindmap artifact');
-      artifactStore.addArtifact({
-        type,
-        title,
-        data,
-        isStreaming,
-      });
-    }
-  }) as EventListener);
-
-  // Listen for mindmap streaming finished
-  window.addEventListener('mindmap-streaming-finished', (() => {
-    console.log('🏁 Received mindmap-streaming-finished event');
-    useArtifactStore.getState().clearStreamingData();
-  }) as EventListener);
-  
-  console.log('✅ Event listeners set up successfully');
-};
-
-// Set up listeners when the module is loaded
-if (typeof window !== 'undefined') {
-  // Use a small delay to ensure the DOM is ready
-  setTimeout(setupEventListeners, 100);
-}
