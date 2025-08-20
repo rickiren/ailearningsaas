@@ -268,25 +268,9 @@ export default function Zero280BuildPage() {
           window.history.replaceState({}, '', newUrl);
         }
         
-        // Update artifacts if any were created
+        // Don't update artifacts immediately - wait for streaming to complete
         if (data.artifacts && data.artifacts.length > 0) {
-          console.log('Setting artifacts (initial):', data.artifacts);
-          // Transform artifacts to match the expected structure
-          const transformedArtifacts = data.artifacts.map((artifact: any) => {
-            console.log('Transforming artifact:', artifact);
-            const transformed = {
-              name: artifact.name || artifact.metadata?.title || 'Untitled',
-              type: artifact.type || artifact.metadata?.type || 'unknown', 
-              content: artifact.content || artifact.data || '',
-              description: artifact.description || artifact.metadata?.description || '',
-              preview: artifact.preview || artifact.metadata?.preview || '',
-              metadata: artifact.metadata,
-              data: artifact.data
-            };
-            console.log('Transformed artifact:', transformed);
-            return transformed;
-          });
-          setCurrentArtifacts(transformedArtifacts);
+          console.log('Preparing to stream artifacts (initial):', data.artifacts);
         } else {
           console.log('No artifacts in response (initial)');
         }
@@ -309,6 +293,8 @@ export default function Zero280BuildPage() {
         if (data.artifacts && data.artifacts.length > 0) {
           // This is initial artifact creation
           console.log('Streaming initial artifact');
+          stopThinking(); // Stop thinking as soon as we start streaming
+          
           const artifact = data.artifacts[0];
           setStreamingArtifact(artifact);
           setIsStreamingCode(true);
@@ -326,7 +312,24 @@ export default function Zero280BuildPage() {
             } else {
               clearInterval(streamInterval);
               setIsStreamingCode(false);
-              stopThinking();
+              
+              // Now update the artifacts with the final code
+              const transformedArtifacts = data.artifacts.map((artifact: any) => {
+                console.log('Transforming artifact:', artifact);
+                const transformed = {
+                  name: artifact.name || artifact.metadata?.title || 'Untitled',
+                  type: artifact.type || artifact.metadata?.type || 'unknown', 
+                  content: artifact.content || artifact.data || '',
+                  description: artifact.description || artifact.metadata?.description || '',
+                  preview: artifact.preview || artifact.metadata?.preview || '',
+                  metadata: artifact.metadata,
+                  data: artifact.data
+                };
+                console.log('Transformed artifact:', transformed);
+                return transformed;
+              });
+              setCurrentArtifacts(transformedArtifacts);
+              
               completeMessageExecution();
             }
           }, 100);
@@ -500,50 +503,17 @@ export default function Zero280BuildPage() {
           window.history.replaceState({}, '', newUrl);
         }
         
-        // Handle edit response - update existing artifact instead of creating new ones
+        // Handle edit response - start streaming immediately without updating artifacts yet
         if (data.editedCode && currentArtifacts.length > 0) {
-          console.log('Updating existing artifact with edited code');
+          console.log('Starting to stream edited code');
           console.log('Old content length:', currentArtifacts[0].content?.length || 0);
           console.log('New content length:', data.editedCode.length);
           
-          // Update the existing artifact with the edited code
-          const updatedArtifacts = currentArtifacts.map(artifact => ({
-            ...artifact,
-            content: data.editedCode,
-            // Update timestamp to show it was modified
-            lastModified: new Date().toISOString()
-          }));
-          setCurrentArtifacts(updatedArtifacts);
-          console.log('Artifacts updated:', updatedArtifacts[0].name);
-          
-          // Also update the streaming artifact if it exists
-          if (streamingArtifact) {
-            setStreamingArtifact({
-              ...streamingArtifact,
-              content: data.editedCode
-            });
-          }
-          
-          // Update streamed content for display
-          setStreamedContent(data.editedCode);
+          // Don't update artifacts yet - wait for streaming to complete
+          // Just prepare for streaming
         } else if (data.artifacts && data.artifacts.length > 0) {
-          // This is a new artifact creation (first time)
-          console.log('Setting new artifacts (submit):', data.artifacts);
-          const transformedArtifacts = data.artifacts.map((artifact: any) => {
-            console.log('Transforming new artifact:', artifact);
-            const transformed = {
-              name: artifact.name || artifact.metadata?.title || 'Untitled',
-              type: artifact.type || artifact.metadata?.type || 'unknown',
-              content: artifact.content || artifact.data || '',
-              description: artifact.description || artifact.metadata?.description || '',
-              preview: artifact.preview || artifact.metadata?.preview || '',
-              metadata: artifact.metadata,
-              data: artifact.data
-            };
-            console.log('Transformed new artifact:', transformed);
-            return transformed;
-          });
-          setCurrentArtifacts(transformedArtifacts);
+          // This is a new artifact creation - don't update artifacts yet, wait for streaming
+          console.log('Preparing to stream new artifacts (submit):', data.artifacts);
         } else {
           console.log('No artifacts or edits in response (submit)');
         }
@@ -564,8 +534,10 @@ export default function Zero280BuildPage() {
         
         // Handle streaming for new artifacts or edits
         if (data.editedCode && currentArtifacts.length > 0) {
-          // This is an edit - stream the edited code
+          // This is an edit - stop thinking and start streaming immediately
           console.log('Streaming edited code');
+          stopThinking(); // Stop thinking as soon as we start streaming
+          
           setStreamingArtifact({
             ...currentArtifacts[0],
             content: data.editedCode
@@ -585,13 +557,24 @@ export default function Zero280BuildPage() {
             } else {
               clearInterval(streamInterval);
               setIsStreamingCode(false);
-              stopThinking();
+              
+              // Now update the artifacts with the final code
+              const updatedArtifacts = currentArtifacts.map(artifact => ({
+                ...artifact,
+                content: data.editedCode,
+                lastModified: new Date().toISOString()
+              }));
+              setCurrentArtifacts(updatedArtifacts);
+              console.log('Artifacts updated after streaming:', updatedArtifacts[0].name);
+              
               completeMessageExecution();
             }
           }, 50); // Faster streaming for edits
         } else if (data.artifacts && data.artifacts.length > 0) {
           // This is a new artifact creation (first time)
           console.log('Streaming new artifact');
+          stopThinking(); // Stop thinking as soon as we start streaming
+          
           const artifact = data.artifacts[0];
           setStreamingArtifact(artifact);
           setIsStreamingCode(true);
@@ -600,7 +583,7 @@ export default function Zero280BuildPage() {
           // Simulate code streaming
           const content = artifact.content;
           const lines = content.split('\n');
-          let currentLine = 1;
+          let currentLine = 0;
           
           const streamInterval = setInterval(() => {
             if (currentLine < lines.length) {
@@ -609,7 +592,24 @@ export default function Zero280BuildPage() {
             } else {
               clearInterval(streamInterval);
               setIsStreamingCode(false);
-              stopThinking();
+              
+              // Now update the artifacts with the final code
+              const transformedArtifacts = data.artifacts.map((artifact: any) => {
+                console.log('Transforming new artifact:', artifact);
+                const transformed = {
+                  name: artifact.name || artifact.metadata?.title || 'Untitled',
+                  type: artifact.type || artifact.metadata?.type || 'unknown',
+                  content: artifact.content || artifact.data || '',
+                  description: artifact.description || artifact.metadata?.description || '',
+                  preview: artifact.preview || artifact.metadata?.preview || '',
+                  metadata: artifact.metadata,
+                  data: artifact.data
+                };
+                console.log('Transformed new artifact:', transformed);
+                return transformed;
+              });
+              setCurrentArtifacts(transformedArtifacts);
+              
               completeMessageExecution();
             }
           }, 100);
