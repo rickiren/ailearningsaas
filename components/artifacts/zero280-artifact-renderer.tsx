@@ -186,6 +186,7 @@ export function Zero280ArtifactRenderer({ artifact, className = '' }: Zero280Art
     if (artifactType === 'html') {
       setRenderedContent(
         <iframe
+          key={`iframe-${artifactName}-${Date.now()}`} // Force re-render when content changes
           srcDoc={artifactContent}
           className="w-full h-full border-0"
           title={`Preview of ${artifactName}`}
@@ -204,6 +205,7 @@ export function Zero280ArtifactRenderer({ artifact, className = '' }: Zero280Art
       
       setRenderedContent(
         <iframe
+          key={`iframe-react-${artifactName}-${Date.now()}`} // Force re-render when content changes
           srcDoc={htmlContent}
           className="w-full h-full border-0"
           title={`Preview of ${artifactName}`}

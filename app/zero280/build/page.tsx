@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Send, Plus, Edit, MessageSquare, Eye, GraduationCap, Database, ArrowUpRight, Code } from 'lucide-react';
-import { ThinkingIndicator } from '@/components/chat/thinking-indicator';
 import { ToolExecutionProgress } from '@/components/chat/tool-execution-progress';
 import { ProgressSummary } from '@/components/chat/progress-summary';
 import { CodeStreamingPreview } from '@/components/chat/code-streaming-preview';
@@ -90,29 +89,10 @@ export default function Zero280BuildPage() {
       setHasInitialized(true);
     } else if (message && !currentConversationId) {
       // Only create new conversation if we don't have one and have a message
-      const timestamp = new Date().toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true 
-      }) + ' on ' + new Date().toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric' 
-      });
-      
-      // Set initial chat history with just the user message
-      setChatHistory([
-        {
-          type: 'user',
-          message: message,
-          timestamp: timestamp,
-          id: `msg_${Date.now()}_user`
-        }
-      ]);
-      
       // Set hasInitialized immediately to prevent duplicate processing
       setHasInitialized(true);
       
-      // Automatically send the initial message to AI
+      // Automatically send the initial message to AI - it will handle adding the user message
       handleInitialMessage(message);
     }
   }, [searchParams, hasInitialized, currentConversationId]); // Add currentConversationId dependency
@@ -227,28 +207,38 @@ export default function Zero280BuildPage() {
     
     setIsLoading(true);
     
+    const timestamp = new Date().toLocaleTimeString('en-US', { 
+      hour: 'numeric', 
+      minute: '2-digit',
+      hour12: true 
+    }) + ' on ' + new Date().toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric' 
+    });
+    
+    // Add user message first
+    const userMessage = {
+      type: 'user' as const,
+      message: message,
+      timestamp: timestamp,
+      id: `msg_${Date.now()}_user`
+    };
+    
     // Start progress tracking
     const messageId = `msg_${Date.now()}_ai`;
     startMessageExecution(messageId);
     startThinking(messageId, "Analyzing your request...");
     
-    // Add AI thinking message immediately
+    // Add AI thinking message
     const newAIMessage = {
       type: 'ai' as const,
       message: 'Thinking...',
       status: 'Processing',
-      timestamp: new Date().toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true 
-      }) + ' on ' + new Date().toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric' 
-      }),
+      timestamp: timestamp,
       id: messageId
     };
 
-    setChatHistory(prev => [...prev, newAIMessage]);
+    setChatHistory([userMessage, newAIMessage]);
 
     try {
       const response = await fetch('/api/zero280', {
@@ -378,32 +368,47 @@ export default function Zero280BuildPage() {
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true);
     e.preventDefault();
+    e.stopPropagation();
   };
 
   const handleMouseMove = (e: MouseEvent) => {
-    if (isDragging) {
-      const newWidth = e.clientX;
-      // Set minimum and maximum widths
-      if (newWidth >= 200 && newWidth <= window.innerWidth - 200) {
-        setChatWidth(newWidth);
-      }
+    if (!isDragging) return;
+    
+    e.preventDefault();
+    const newWidth = e.clientX;
+    
+    // Set minimum and maximum widths with better constraints
+    const minWidth = 280;
+    const maxWidth = window.innerWidth - 400;
+    
+    if (newWidth >= minWidth && newWidth <= maxWidth) {
+      setChatWidth(newWidth);
     }
   };
 
-  const handleMouseUp = () => {
-    setIsDragging(false);
+  const handleMouseUp = (e: MouseEvent) => {
+    if (isDragging) {
+      setIsDragging(false);
+      e.preventDefault();
+    }
   };
 
   useEffect(() => {
     if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
+      // Use capture: true to ensure events are handled properly
+      document.addEventListener('mousemove', handleMouseMove, { capture: true });
+      document.addEventListener('mouseup', handleMouseUp, { capture: true });
+      document.addEventListener('mouseleave', handleMouseUp, { capture: true });
+      
       document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
+      // Remove the pointerEvents = 'none' as it prevents dragging
       
       return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
+        document.removeEventListener('mousemove', handleMouseMove, { capture: true });
+        document.removeEventListener('mouseup', handleMouseUp, { capture: true });
+        document.removeEventListener('mouseleave', handleMouseUp, { capture: true });
+        
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
       };
@@ -498,6 +503,9 @@ export default function Zero280BuildPage() {
         // Handle edit response - update existing artifact instead of creating new ones
         if (data.editedCode && currentArtifacts.length > 0) {
           console.log('Updating existing artifact with edited code');
+          console.log('Old content length:', currentArtifacts[0].content?.length || 0);
+          console.log('New content length:', data.editedCode.length);
+          
           // Update the existing artifact with the edited code
           const updatedArtifacts = currentArtifacts.map(artifact => ({
             ...artifact,
@@ -506,6 +514,7 @@ export default function Zero280BuildPage() {
             lastModified: new Date().toISOString()
           }));
           setCurrentArtifacts(updatedArtifacts);
+          console.log('Artifacts updated:', updatedArtifacts[0].name);
           
           // Also update the streaming artifact if it exists
           if (streamingArtifact) {
@@ -557,7 +566,10 @@ export default function Zero280BuildPage() {
         if (data.editedCode && currentArtifacts.length > 0) {
           // This is an edit - stream the edited code
           console.log('Streaming edited code');
-          setStreamingArtifact(currentArtifacts[0]);
+          setStreamingArtifact({
+            ...currentArtifacts[0],
+            content: data.editedCode
+          });
           setIsStreamingCode(true);
           setStreamedContent('');
           
@@ -576,7 +588,7 @@ export default function Zero280BuildPage() {
               stopThinking();
               completeMessageExecution();
             }
-          }, 100);
+          }, 50); // Faster streaming for edits
         } else if (data.artifacts && data.artifacts.length > 0) {
           // This is a new artifact creation (first time)
           console.log('Streaming new artifact');
@@ -637,7 +649,7 @@ export default function Zero280BuildPage() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
       {/* Top System Bar */}
       <div className="h-8 bg-gray-800 flex items-center justify-between px-4">
         <div className="flex space-x-2">
@@ -701,11 +713,12 @@ export default function Zero280BuildPage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex">
+      <div className="flex-1 flex overflow-hidden">
         {/* Left Column - Chat Interface */}
         <div 
           className="bg-gray-100 flex flex-col h-full"
           style={{ width: `${chatWidth}px` }}
+          onWheel={(e) => e.stopPropagation()} // Prevent scroll bubbling
         >
           {/* Conversation Manager */}
           <div className="border-b border-gray-200">
@@ -716,7 +729,27 @@ export default function Zero280BuildPage() {
           </div>
 
           {/* Chat History - Scrollable Area */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 chat-sidebar">
+          <div 
+            className="flex-1 overflow-y-auto p-4 space-y-4 chat-sidebar"
+            onWheel={(e) => {
+              // Prevent scroll bubbling to parent elements
+              e.stopPropagation();
+              
+              // Check if we need to scroll and prevent page scroll if so
+              const element = e.currentTarget;
+              const atTop = element.scrollTop === 0;
+              const atBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
+              
+              // Only allow page scroll if we're at the boundaries and trying to scroll further
+              if ((atTop && e.deltaY < 0) || (atBottom && e.deltaY > 0)) {
+                // Allow normal page scroll
+                return;
+              } else {
+                // Prevent page scroll, keep it within this element
+                e.preventDefault();
+              }
+            }}
+          >
             {chatHistory.map((chat, index) => (
               <div key={index} className={`flex ${chat.type === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {chat.type === 'user' ? (
@@ -756,18 +789,8 @@ export default function Zero280BuildPage() {
               </div>
             ))}
             
-            {/* Progress Indicators */}
-            {isThinking && (
-              <ThinkingIndicator 
-                thinking={{
-                  status: 'active',
-                  message: thinkingMessage
-                }}
-                className="mb-4"
-              />
-            )}
-            
-            {isActive && executions.length > 0 && (
+            {/* Progress Indicators - Only show when not actively thinking via AI message */}
+            {isActive && executions.length > 0 && !isThinking && (
               <ToolExecutionProgress 
                 executions={executions}
                 isActive={isActive}
@@ -804,6 +827,12 @@ export default function Zero280BuildPage() {
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSubmit(e);
+                    }
+                  }}
                   placeholder="Ask me anything..."
                   className="w-full bg-transparent text-gray-800 text-lg placeholder-gray-400 focus:outline-none border-none resize-none"
                   style={{ fontFamily: 'var(--font-geist-sans)' }}
@@ -850,17 +879,22 @@ export default function Zero280BuildPage() {
 
         {/* Draggable Splitter */}
         <div
-          className={`w-1 flex items-center justify-center transition-colors ${
-            isDragging ? 'bg-blue-500' : 'bg-gray-300 hover:bg-blue-400'
+          className={`w-1 flex items-center justify-center transition-all duration-200 ${
+            isDragging ? 'bg-blue-500 w-2' : 'bg-gray-300 hover:bg-blue-400 hover:w-2'
           }`}
           onMouseDown={handleMouseDown}
           style={{ cursor: 'col-resize' }}
         >
-          <div className="w-0.5 h-8 bg-gray-400 rounded-full"></div>
+          <div className={`rounded-full transition-all duration-200 ${
+            isDragging ? 'w-1 h-12 bg-white' : 'w-0.5 h-8 bg-gray-400'
+          }`}></div>
         </div>
 
         {/* Right Column - Preview/Code Generator */}
-        <div className="flex-1 bg-white flex flex-col">
+        <div 
+          className="flex-1 bg-white flex flex-col"
+          onWheel={(e) => e.stopPropagation()} // Prevent scroll bubbling
+        >
           {viewMode === 'preview' ? (
             /* Preview Mode */
             currentArtifacts.length > 0 ? (
@@ -869,7 +903,7 @@ export default function Zero280BuildPage() {
                 {/* Only show the current working artifact - clean layout like Claude */}
                 {currentArtifacts.length > 0 && (
                   <Zero280ArtifactRenderer 
-                    key={currentArtifacts[0].name || 'current-artifact'}
+                    key={`${currentArtifacts[0].name || 'current-artifact'}-${currentArtifacts[0].lastModified || Date.now()}`}
                     artifact={currentArtifacts[0]} 
                     className="flex-1"
                   />
@@ -916,7 +950,7 @@ export default function Zero280BuildPage() {
             currentArtifacts.length > 0 ? (
               <div className="w-full h-full flex flex-col">
                 <Zero280ArtifactRenderer 
-                  key={currentArtifacts[0].name || 'current-artifact'}
+                  key={`${currentArtifacts[0].name || 'current-artifact'}-${currentArtifacts[0].lastModified || Date.now()}`}
                   artifact={currentArtifacts[0]} 
                   className="flex-1"
                 />
