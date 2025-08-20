@@ -1,9 +1,11 @@
+import { supabase, Artifact as SupabaseArtifact, ArtifactInsert, ArtifactUpdate } from './supabase';
+
 export interface ArtifactMetadata {
   id: string;
-  userId: string;
+  userId?: string;
   created_at: string;
   updated_at: string;
-  type: 'code' | 'html' | 'markdown' | 'json' | 'mindmap' | 'component' | 'function' | 'class' | 'interface' | 'type' | 'file';
+  type: string;
   title: string;
   description?: string;
   tags?: string[];
@@ -19,7 +21,9 @@ export interface ArtifactMetadata {
 export interface Artifact {
   metadata: ArtifactMetadata;
   content: string;
-  rawData?: any; // For structured data like mindmaps
+  rawData?: any;
+  id: string;
+  type: string;
 }
 
 export interface ArtifactFilter {
@@ -32,201 +36,237 @@ export interface ArtifactFilter {
 }
 
 class ArtifactStorageService {
-  private readonly STORAGE_KEY = 'ai_artifacts';
-  private readonly USER_ID = 'default_user'; // Will be replaced with actual user ID later
+  private readonly USER_ID = 'default_user';
 
-  // Initialize storage
-  private initializeStorage(): void {
-    if (typeof window === 'undefined') return;
-    
-    if (!localStorage.getItem(this.STORAGE_KEY)) {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify([]));
-    }
+  // Convert Supabase artifact to local Artifact format
+  private convertSupabaseArtifact(supabaseArtifact: SupabaseArtifact): Artifact {
+    return {
+      id: supabaseArtifact.id,
+      content: supabaseArtifact.content,
+      type: supabaseArtifact.type,
+      rawData: supabaseArtifact.metadata,
+      metadata: {
+        id: supabaseArtifact.id,
+        userId: supabaseArtifact.user_id || this.USER_ID,
+        created_at: supabaseArtifact.created_at,
+        updated_at: supabaseArtifact.updated_at,
+        type: supabaseArtifact.type,
+        title: supabaseArtifact.name,
+        description: supabaseArtifact.description || undefined,
+        tags: supabaseArtifact.tags || [],
+        version: supabaseArtifact.version,
+        size: supabaseArtifact.content.length,
+        language: this.detectLanguage(supabaseArtifact.type, supabaseArtifact.content),
+        framework: this.detectFramework(supabaseArtifact.content)
+      }
+    };
   }
 
-  // Get all artifacts from storage
-  private getStorageData(): Artifact[] {
-    if (typeof window === 'undefined') return [];
-    
-    try {
-      const data = localStorage.getItem(this.STORAGE_KEY);
-      return data ? JSON.parse(data) : [];
-    } catch (error) {
-      console.error('Error reading from localStorage:', error);
-      return [];
-    }
-  }
-
-  // Save artifacts to storage
-  private saveStorageData(artifacts: Artifact[]): void {
-    if (typeof window === 'undefined') return;
-    
-    try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(artifacts));
-    } catch (error) {
-      console.error('Error saving to localStorage:', error);
-    }
-  }
-
-  // Generate unique ID
-  private generateId(): string {
-    return `artifact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  // Convert local artifact to Supabase format
+  private convertToSupabaseInsert(artifact: Omit<Artifact, 'metadata'> & { title: string; type: string }): ArtifactInsert {
+    return {
+      name: artifact.title,
+      type: artifact.type,
+      content: artifact.content,
+      description: artifact.description,
+      tags: artifact.tags || [],
+      user_id: this.USER_ID,
+      version: 1,
+      is_active: true,
+      metadata: artifact.rawData || {}
+    };
   }
 
   // Save a new artifact
-  async saveArtifact(artifact: Omit<Artifact, 'metadata'> & { title: string; type: ArtifactMetadata['type'] }): Promise<string> {
-    this.initializeStorage();
-    
-    const now = new Date().toISOString();
-    const newArtifact: Artifact = {
-      ...artifact,
-      metadata: {
-        id: this.generateId(),
-        userId: this.USER_ID,
-        created_at: now,
-        updated_at: now,
-        type: artifact.type,
-        title: artifact.title,
-        description: artifact.description,
-        tags: artifact.tags || [],
-        version: 1,
-        size: artifact.content.length,
-        language: this.detectLanguage(artifact.type, artifact.content),
-        framework: this.detectFramework(artifact.content),
-        ...artifact.metadata
+  async saveArtifact(artifact: Omit<Artifact, 'metadata'> & { title: string; type: string }): Promise<string> {
+    try {
+      const insertData = this.convertToSupabaseInsert(artifact);
+      
+      const { data, error } = await supabase
+        .from('artifacts')
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error saving artifact to Supabase:', error);
+        throw new Error(`Failed to save artifact: ${error.message}`);
       }
-    };
 
-    const artifacts = this.getStorageData();
-    artifacts.push(newArtifact);
-    this.saveStorageData(artifacts);
-
-    return newArtifact.metadata.id;
+      return data.id;
+    } catch (error) {
+      console.error('Error in saveArtifact:', error);
+      throw error;
+    }
   }
 
   // Get artifact by ID
   async getArtifact(id: string): Promise<Artifact | null> {
-    this.initializeStorage();
-    
-    const artifacts = this.getStorageData();
-    return artifacts.find(artifact => artifact.metadata.id === id) || null;
+    try {
+      const { data, error } = await supabase
+        .from('artifacts')
+        .select('*')
+        .eq('id', id)
+        .eq('is_active', true)
+        .single();
+
+      if (error || !data) {
+        return null;
+      }
+
+      return this.convertSupabaseArtifact(data);
+    } catch (error) {
+      console.error('Error fetching artifact:', error);
+      return null;
+    }
   }
 
   // Get artifact by title
   async getArtifactByTitle(title: string): Promise<Artifact | null> {
-    this.initializeStorage();
-    
-    const artifacts = this.getStorageData();
-    return artifacts.find(artifact => artifact.metadata.title === title) || null;
+    try {
+      const { data, error } = await supabase
+        .from('artifacts')
+        .select('*')
+        .eq('name', title)
+        .eq('is_active', true)
+        .single();
+
+      if (error || !data) {
+        return null;
+      }
+
+      return this.convertSupabaseArtifact(data);
+    } catch (error) {
+      console.error('Error fetching artifact by title:', error);
+      return null;
+    }
   }
 
   // List all artifacts with optional filtering
   async listArtifacts(filter?: ArtifactFilter): Promise<Artifact[]> {
-    this.initializeStorage();
-    
-    let artifacts = this.getStorageData();
+    try {
+      let query = supabase
+        .from('artifacts')
+        .select('*')
+        .eq('is_active', true);
 
-    // Apply filters
-    if (filter) {
-      if (filter.type) {
-        artifacts = artifacts.filter(artifact => artifact.metadata.type === filter.type);
+      // Apply filters
+      if (filter) {
+        if (filter.type) {
+          query = query.eq('type', filter.type);
+        }
+        
+        if (filter.userId) {
+          query = query.eq('user_id', filter.userId);
+        }
+        
+        if (filter.tags && filter.tags.length > 0) {
+          query = query.overlaps('tags', filter.tags);
+        }
+        
+        if (filter.search) {
+          query = query.or(`name.ilike.%${filter.search}%,description.ilike.%${filter.search}%,content.ilike.%${filter.search}%`);
+        }
+        
+        if (filter.createdAfter) {
+          query = query.gte('created_at', filter.createdAfter);
+        }
+        
+        if (filter.createdBefore) {
+          query = query.lte('created_at', filter.createdBefore);
+        }
       }
-      
-      if (filter.userId) {
-        artifacts = artifacts.filter(artifact => artifact.metadata.userId === filter.userId);
+
+      // Sort by most recent first
+      query = query.order('updated_at', { ascending: false });
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Error fetching artifacts:', error);
+        throw new Error(`Failed to fetch artifacts: ${error.message}`);
       }
-      
-      if (filter.tags && filter.tags.length > 0) {
-        artifacts = artifacts.filter(artifact => 
-          filter.tags!.some(tag => artifact.metadata.tags?.includes(tag))
-        );
-      }
-      
-      if (filter.search) {
-        const searchLower = filter.search.toLowerCase();
-        artifacts = artifacts.filter(artifact => 
-          artifact.metadata.title.toLowerCase().includes(searchLower) ||
-          artifact.metadata.description?.toLowerCase().includes(searchLower) ||
-          artifact.content.toLowerCase().includes(searchLower)
-        );
-      }
-      
-      if (filter.createdAfter) {
-        artifacts = artifacts.filter(artifact => 
-          artifact.metadata.created_at >= filter.createdAfter!
-        );
-      }
-      
-      if (filter.createdBefore) {
-        artifacts = artifacts.filter(artifact => 
-          artifact.metadata.created_at <= filter.createdBefore!
-        );
-      }
+
+      return (data || []).map(item => this.convertSupabaseArtifact(item));
+    } catch (error) {
+      console.error('Error in listArtifacts:', error);
+      throw error;
     }
-
-    // Sort by most recent first
-    return artifacts.sort((a, b) => 
-      new Date(b.metadata.updated_at).getTime() - new Date(a.metadata.created_at).getTime()
-    );
   }
 
   // Update existing artifact
   async updateArtifact(id: string, updates: Partial<Artifact>): Promise<boolean> {
-    this.initializeStorage();
-    
-    const artifacts = this.getStorageData();
-    const index = artifacts.findIndex(artifact => artifact.metadata.id === id);
-    
-    if (index === -1) return false;
-
-    const updatedArtifact: Artifact = {
-      ...artifacts[index],
-      ...updates,
-      metadata: {
-        ...artifacts[index].metadata,
-        ...updates.metadata,
-        updated_at: new Date().toISOString(),
-        version: (artifacts[index].metadata.version || 1) + 1,
-        size: updates.content ? updates.content.length : artifacts[index].metadata.size
+    try {
+      const updateData: ArtifactUpdate = {};
+      
+      if (updates.content !== undefined) {
+        updateData.content = updates.content;
       }
-    };
+      
+      if (updates.metadata?.title !== undefined) {
+        updateData.name = updates.metadata.title;
+      }
+      
+      if (updates.metadata?.description !== undefined) {
+        updateData.description = updates.metadata.description;
+      }
+      
+      if (updates.metadata?.tags !== undefined) {
+        updateData.tags = updates.metadata.tags;
+      }
+      
+      if (updates.type !== undefined) {
+        updateData.type = updates.type;
+      }
+      
+      if (updates.rawData !== undefined) {
+        updateData.metadata = updates.rawData;
+      }
 
-    artifacts[index] = updatedArtifact;
-    this.saveStorageData(artifacts);
-    
-    return true;
+      const { error } = await supabase
+        .from('artifacts')
+        .update(updateData)
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error updating artifact:', error);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error in updateArtifact:', error);
+      return false;
+    }
   }
 
-  // Delete artifact
+  // Delete artifact (soft delete by setting is_active to false)
   async deleteArtifact(id: string): Promise<boolean> {
-    this.initializeStorage();
-    
-    const artifacts = this.getStorageData();
-    const filteredArtifacts = artifacts.filter(artifact => artifact.metadata.id !== id);
-    
-    if (filteredArtifacts.length === artifacts.length) return false;
-    
-    this.saveStorageData(filteredArtifacts);
-    return true;
+    try {
+      const { error } = await supabase
+        .from('artifacts')
+        .update({ is_active: false })
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error deleting artifact:', error);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error in deleteArtifact:', error);
+      return false;
+    }
   }
 
   // Search artifacts by content
   async searchArtifacts(query: string): Promise<Artifact[]> {
-    this.initializeStorage();
-    
-    const artifacts = this.getStorageData();
-    const queryLower = query.toLowerCase();
-    
-    return artifacts.filter(artifact => 
-      artifact.metadata.title.toLowerCase().includes(queryLower) ||
-      artifact.metadata.description?.toLowerCase().includes(queryLower) ||
-      artifact.content.toLowerCase().includes(queryLower) ||
-      artifact.metadata.tags?.some(tag => tag.toLowerCase().includes(queryLower))
-    );
+    return this.listArtifacts({ search: query });
   }
 
   // Get artifacts by type
-  async getArtifactsByType(type: ArtifactMetadata['type']): Promise<Artifact[]> {
+  async getArtifactsByType(type: string): Promise<Artifact[]> {
     return this.listArtifacts({ type });
   }
 
@@ -244,41 +284,53 @@ class ArtifactStorageService {
     totalSize: number;
     averageSize: number;
   }> {
-    this.initializeStorage();
-    
-    const artifacts = this.getStorageData();
-    const byType: Record<string, number> = {};
-    const byLanguage: Record<string, number> = {};
-    let totalSize = 0;
+    try {
+      const artifacts = await this.listArtifacts();
+      const byType: Record<string, number> = {};
+      const byLanguage: Record<string, number> = {};
+      let totalSize = 0;
 
-    artifacts.forEach(artifact => {
-      // Count by type
-      byType[artifact.metadata.type] = (byType[artifact.metadata.type] || 0) + 1;
-      
-      // Count by language
-      if (artifact.metadata.language) {
-        byLanguage[artifact.metadata.language] = (byLanguage[artifact.metadata.language] || 0) + 1;
-      }
-      
-      // Calculate size
-      totalSize += artifact.metadata.size || 0;
-    });
+      artifacts.forEach(artifact => {
+        // Count by type
+        byType[artifact.metadata.type] = (byType[artifact.metadata.type] || 0) + 1;
+        
+        // Count by language
+        if (artifact.metadata.language) {
+          byLanguage[artifact.metadata.language] = (byLanguage[artifact.metadata.language] || 0) + 1;
+        }
+        
+        // Calculate size
+        totalSize += artifact.metadata.size || 0;
+      });
 
-    return {
-      total: artifacts.length,
-      byType,
-      byLanguage,
-      totalSize,
-      averageSize: artifacts.length > 0 ? totalSize / artifacts.length : 0
-    };
+      return {
+        total: artifacts.length,
+        byType,
+        byLanguage,
+        totalSize,
+        averageSize: artifacts.length > 0 ? totalSize / artifacts.length : 0
+      };
+    } catch (error) {
+      console.error('Error getting artifact stats:', error);
+      return {
+        total: 0,
+        byType: {},
+        byLanguage: {},
+        totalSize: 0,
+        averageSize: 0
+      };
+    }
   }
 
   // Export all artifacts
   async exportArtifacts(): Promise<string> {
-    this.initializeStorage();
-    
-    const artifacts = this.getStorageData();
-    return JSON.stringify(artifacts, null, 2);
+    try {
+      const artifacts = await this.listArtifacts();
+      return JSON.stringify(artifacts, null, 2);
+    } catch (error) {
+      console.error('Error exporting artifacts:', error);
+      throw new Error('Failed to export artifacts');
+    }
   }
 
   // Import artifacts
@@ -287,20 +339,46 @@ class ArtifactStorageService {
       const artifacts = JSON.parse(jsonData);
       if (!Array.isArray(artifacts)) throw new Error('Invalid artifacts format');
       
-      const existingArtifacts = this.getStorageData();
-      const mergedArtifacts = [...existingArtifacts, ...artifacts];
+      let importedCount = 0;
+      for (const artifact of artifacts) {
+        try {
+          await this.saveArtifact({
+            content: artifact.content,
+            title: artifact.metadata.title,
+            type: artifact.metadata.type,
+            description: artifact.metadata.description,
+            tags: artifact.metadata.tags,
+            rawData: artifact.rawData
+          });
+          importedCount++;
+        } catch (error) {
+          console.error('Error importing individual artifact:', error);
+        }
+      }
       
-      this.saveStorageData(mergedArtifacts);
-      return artifacts.length;
+      return importedCount;
     } catch (error) {
       console.error('Error importing artifacts:', error);
       throw new Error('Failed to import artifacts');
     }
   }
 
-  // Clear all artifacts
+  // Clear all artifacts (soft delete)
   async clearAllArtifacts(): Promise<void> {
-    this.saveStorageData([]);
+    try {
+      const { error } = await supabase
+        .from('artifacts')
+        .update({ is_active: false })
+        .eq('user_id', this.USER_ID);
+        
+      if (error) {
+        console.error('Error clearing artifacts:', error);
+        throw new Error('Failed to clear artifacts');
+      }
+    } catch (error) {
+      console.error('Error in clearAllArtifacts:', error);
+      throw error;
+    }
   }
 
   // Detect programming language from content and type
@@ -368,10 +446,9 @@ class ArtifactStorageService {
     return undefined;
   }
 
-  // Migration helper for future Supabase upgrade
+  // Migration helper (now implemented with Supabase)
   async migrateToSupabase(): Promise<void> {
-    // This will be implemented when upgrading to Supabase
-    console.log('Migration to Supabase not yet implemented');
+    console.log('Already using Supabase for artifact storage');
   }
 }
 

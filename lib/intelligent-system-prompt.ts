@@ -434,5 +434,3 @@ Please ask for clarification if you need more information about the project or r
   }
 }
 
-// Export the class
-export { IntelligentSystemPrompt };

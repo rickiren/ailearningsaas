@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Send, Plus, Edit, MessageSquare, Eye, GraduationCap, Database, ArrowUpRight, Code } from 'lucide-react';
 import { ToolExecutionProgress } from '@/components/chat/tool-execution-progress';
 import { ProgressSummary } from '@/components/chat/progress-summary';
@@ -33,6 +33,7 @@ export default function Zero280BuildPage() {
   const [chatWidth, setChatWidth] = useState(320); // Default chat width
   const [isDragging, setIsDragging] = useState(false);
   const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview'); // New state for view mode
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentArtifacts, setCurrentArtifacts] = useState<Artifact[]>([]);
   const [chatHistory, setChatHistory] = useState<Array<{
     type: 'user' | 'ai';
@@ -68,6 +69,7 @@ export default function Zero280BuildPage() {
   } = useProgressTracker();
   
   const searchParams = useSearchParams();
+  const router = useRouter();
   
   useEffect(() => {
     const message = searchParams.get('message');
@@ -418,6 +420,20 @@ export default function Zero280BuildPage() {
     }
   }, [isDragging]);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isModalOpen && !(event.target as Element).closest('.relative')) {
+        setIsModalOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isModalOpen]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
@@ -650,24 +666,40 @@ export default function Zero280BuildPage() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
-      {/* Top System Bar */}
-      <div className="h-8 bg-gray-800 flex items-center justify-between px-4">
-        <div className="flex space-x-2">
-          <div className="w-3 h-3 rounded-full bg-red-500"></div>
-          <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-          <div className="w-3 h-3 rounded-full bg-green-500"></div>
-        </div>
-      </div>
-
       {/* Top Navigation Bar */}
       <div className="bg-white border-b border-gray-200 px-6 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-2">
-              <span className="font-medium text-gray-900">hello-beautiful-page</span>
-              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
+            <div className="relative flex items-center space-x-2">
+              <span className="font-medium text-gray-900">
+                {currentArtifacts.length > 0 ? currentArtifacts[0].name : 'No artifact selected'}
+              </span>
+              <button
+                onClick={() => setIsModalOpen(!isModalOpen)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              
+              {/* Dropdown Panel */}
+              {isModalOpen && (
+                <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+                  <button
+                    onClick={() => {
+                      router.push('/zero280');
+                      setIsModalOpen(false);
+                    }}
+                    className="w-full flex items-center space-x-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+                  >
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                    <span className="text-gray-700">Go to Dashboard</span>
+                  </button>
+                </div>
+              )}
             </div>
             <div className="text-sm text-gray-500">
               {currentConversationId ? (
@@ -969,6 +1001,7 @@ export default function Zero280BuildPage() {
           )}
         </div>
       </div>
+
     </div>
   );
 }

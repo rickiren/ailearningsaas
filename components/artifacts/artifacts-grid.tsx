@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useArtifactStore } from '@/lib/artifact-store';
-import { Artifact } from '@/types/artifacts';
-import { Eye, Code, MessageSquare, Calendar, ArrowUpRight } from 'lucide-react';
+import { Artifact } from '@/lib/artifact-storage';
+import { Eye, Code, MessageSquare, Calendar, ArrowUpRight, GraduationCap } from 'lucide-react';
 
 interface ArtifactsGridProps {
   className?: string;

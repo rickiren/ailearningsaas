@@ -1,5 +1,41 @@
 import { create } from 'zustand';
-import { artifactStorage, Artifact, ArtifactMetadata, ArtifactFilter } from './artifact-storage';
+import { ArtifactService } from './artifact-service';
+import { supabase, Artifact as SupabaseArtifact } from './supabase';
+
+export interface ArtifactMetadata {
+  id: string;
+  userId?: string;
+  created_at: string;
+  updated_at: string;
+  type: string;
+  title: string;
+  description?: string;
+  tags?: string[];
+  version?: number;
+  parentId?: string;
+  dependencies?: string[];
+  filePath?: string;
+  size?: number;
+  language?: string;
+  framework?: string;
+}
+
+export interface Artifact {
+  metadata: ArtifactMetadata;
+  content: string;
+  rawData?: any;
+  id: string;
+  type: string;
+}
+
+export interface ArtifactFilter {
+  type?: string;
+  userId?: string;
+  tags?: string[];
+  search?: string;
+  createdAfter?: string;
+  createdBefore?: string;
+}
 
 interface ArtifactState {
   // State
@@ -21,7 +57,7 @@ interface ArtifactState {
   refreshArtifacts: () => Promise<void>;
   
   // CRUD operations
-  createArtifact: (artifact: Omit<Artifact, 'metadata'> & { title: string; type: ArtifactMetadata['type'] }) => Promise<string>;
+  createArtifact: (artifact: { title: string; type: string; content: string; description?: string; tags?: string[]; rawData?: any }) => Promise<string>;
   updateArtifact: (id: string, updates: Partial<Artifact>) => Promise<boolean>;
   deleteArtifact: (id: string) => Promise<boolean>;
   duplicateArtifact: (id: string, newTitle?: string) => Promise<string>;
@@ -67,6 +103,28 @@ interface ArtifactState {
   clearError: () => void;
 }
 
+// Convert Supabase artifact to local Artifact format
+const convertSupabaseArtifact = (supabaseArtifact: SupabaseArtifact): Artifact => {
+  return {
+    id: supabaseArtifact.id,
+    content: supabaseArtifact.content,
+    type: supabaseArtifact.type,
+    rawData: supabaseArtifact.metadata,
+    metadata: {
+      id: supabaseArtifact.id,
+      userId: supabaseArtifact.user_id || undefined,
+      created_at: supabaseArtifact.created_at,
+      updated_at: supabaseArtifact.updated_at,
+      type: supabaseArtifact.type,
+      title: supabaseArtifact.name,
+      description: supabaseArtifact.description || undefined,
+      tags: supabaseArtifact.tags || [],
+      version: supabaseArtifact.version,
+      size: supabaseArtifact.content.length
+    }
+  };
+};
+
 export const useArtifactStore = create<ArtifactState>((set, get) => ({
   // Initial state
   artifacts: [],
@@ -84,7 +142,8 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
   loadArtifacts: async () => {
     try {
       set({ isLoading: true, error: null });
-      const artifacts = await artifactStorage.listArtifacts();
+      const supabaseArtifacts = await ArtifactService.getUserArtifacts();
+      const artifacts = supabaseArtifacts.map(convertSupabaseArtifact);
       set({ artifacts, isLoading: false });
     } catch (error) {
       set({ 
@@ -97,8 +156,9 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
   loadArtifact: async (id: string) => {
     try {
       set({ isLoading: true, error: null });
-      const artifact = await artifactStorage.getArtifact(id);
-      if (artifact) {
+      const supabaseArtifact = await ArtifactService.getArtifact(id);
+      if (supabaseArtifact) {
+        const artifact = convertSupabaseArtifact(supabaseArtifact);
         set({ currentArtifact: artifact, isLoading: false });
       } else {
         set({ error: 'Artifact not found', isLoading: false });
@@ -119,10 +179,22 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
   createArtifact: async (artifact) => {
     try {
       set({ isLoading: true, error: null });
-      const id = await artifactStorage.saveArtifact(artifact);
+      const supabaseArtifact = await ArtifactService.createArtifact({
+        name: artifact.title,
+        type: artifact.type,
+        content: artifact.content,
+        description: artifact.description,
+        tags: artifact.tags || [],
+        metadata: artifact.rawData || {}
+      });
+      
+      if (!supabaseArtifact) {
+        throw new Error('Failed to create artifact');
+      }
+      
       await get().loadArtifacts(); // Refresh the list
       set({ isLoading: false });
-      return id;
+      return supabaseArtifact.id;
     } catch (error) {
       set({ 
         error: error instanceof Error ? error.message : 'Failed to create artifact', 
@@ -135,16 +207,37 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
   updateArtifact: async (id, updates) => {
     try {
       set({ isLoading: true, error: null });
-      const success = await artifactStorage.updateArtifact(id, updates);
+      const updateData: any = {};
+      
+      if (updates.content !== undefined) {
+        updateData.content = updates.content;
+      }
+      if (updates.metadata?.title !== undefined) {
+        updateData.name = updates.metadata.title;
+      }
+      if (updates.metadata?.description !== undefined) {
+        updateData.description = updates.metadata.description;
+      }
+      if (updates.metadata?.tags !== undefined) {
+        updateData.tags = updates.metadata.tags;
+      }
+      if (updates.type !== undefined) {
+        updateData.type = updates.type;
+      }
+      if (updates.rawData !== undefined) {
+        updateData.metadata = updates.rawData;
+      }
+      
+      const updatedArtifact = await ArtifactService.updateArtifact(id, updateData);
+      const success = !!updatedArtifact;
+      
       if (success) {
         await get().loadArtifacts(); // Refresh the list
         // Update current artifact if it's the one being updated
         const current = get().currentArtifact;
-        if (current && current.metadata.id === id) {
-          const updated = await artifactStorage.getArtifact(id);
-          if (updated) {
-            set({ currentArtifact: updated });
-          }
+        if (current && current.metadata.id === id && updatedArtifact) {
+          const artifact = convertSupabaseArtifact(updatedArtifact);
+          set({ currentArtifact: artifact });
         }
       }
       set({ isLoading: false });
@@ -161,7 +254,7 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
   deleteArtifact: async (id) => {
     try {
       set({ isLoading: true, error: null });
-      const success = await artifactStorage.deleteArtifact(id);
+      const success = await ArtifactService.deleteArtifact(id);
       if (success) {
         await get().loadArtifacts(); // Refresh the list
         // Clear current artifact if it's the one being deleted
@@ -333,7 +426,23 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
 
   // Statistics and analytics
   getStats: async () => {
-    return await artifactStorage.getArtifactStats();
+    const artifacts = get().artifacts;
+    const byType: Record<string, number> = {};
+    const byLanguage: Record<string, number> = {};
+    let totalSize = 0;
+
+    artifacts.forEach(artifact => {
+      byType[artifact.metadata.type] = (byType[artifact.metadata.type] || 0) + 1;
+      totalSize += artifact.metadata.size || 0;
+    });
+
+    return {
+      total: artifacts.length,
+      byType,
+      byLanguage,
+      totalSize,
+      averageSize: artifacts.length > 0 ? totalSize / artifacts.length : 0
+    };
   },
 
   // Utility methods
