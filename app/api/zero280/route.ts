@@ -137,19 +137,26 @@ ${conversationSummary}
 CRITICAL: You MUST use the create_artifact tool for every build request. Do not just describe what you would build - actually build it using the tool.
 
 When using create_artifact:
-- For React components, include complete imports, component definition, and export
-- For HTML content, provide complete, valid HTML that can render immediately
-- Always set the type to "component" for React components or "html" for HTML
+- PREFER HTML for visual components (landing pages, forms, UI elements) as they render better in preview
+- For HTML content, provide complete, valid HTML with inline CSS for immediate rendering
+- For React components, only use when specifically requested and keep dependencies minimal
+- Always set the type to "html" for HTML content or "component" for React components
 - Include a clear description and preview of what the user will see
-- Make sure the code is complete and functional
+- Make sure the code is complete and functional with all styling inline
 - Use the tool for EVERY component or piece of content you create
 - Build upon previous artifacts in the conversation when appropriate
 
+IMPORTANT: For landing pages, forms, and visual components, use type "html" with complete HTML including:
+- Full HTML structure (<!DOCTYPE html>, <html>, <head>, <body>)
+- All CSS styling inline in <style> tags in the head
+- JavaScript if needed inline in <script> tags
+- Responsive design with proper viewport meta tag
+
 Example usage:
-- User says "build a button" → Use create_artifact to create a Button component
-- User says "create a form" → Use create_artifact to create a Form component
-- User says "make a landing page" → Use create_artifact to create HTML content
-- User says "add a header to the landing page" → Use create_artifact to create a header component that works with the existing page
+- User says "build a button" → Use create_artifact with type "html" to create an HTML button with styling
+- User says "create a form" → Use create_artifact with type "html" to create an HTML form with styling  
+- User says "make a landing page" → Use create_artifact with type "html" to create complete HTML landing page
+- User says "build a React component" → Use create_artifact with type "component" for React components
 
 Available tools: ${TOOLS.map(t => t.name).join(', ')}`;
 

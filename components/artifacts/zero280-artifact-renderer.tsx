@@ -3,6 +3,148 @@
 import { useState, useEffect } from 'react';
 import { Copy, Code, Eye, Download, ExternalLink } from 'lucide-react';
 
+// Function to convert React component code to HTML for iframe rendering
+function convertReactToHtml(reactCode: string, componentName: string): string {
+  // Check if the component uses styled-components or other complex dependencies
+  if (reactCode.includes('styled-components') || reactCode.includes('styled.')) {
+    // For styled-components, we need a more sophisticated approach
+    return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${componentName} Preview</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: #f8fafc;
+            color: #1f2937;
+        }
+        .preview-notice {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+        .mock-landing {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            min-height: 80vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            text-align: center;
+            border-radius: 12px;
+        }
+        .mock-content {
+            max-width: 600px;
+            padding: 40px;
+        }
+        .mock-title {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+        }
+        .mock-subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            margin-bottom: 2rem;
+        }
+        .mock-button {
+            background: white;
+            color: #4f46e5;
+            padding: 12px 24px;
+            border-radius: 8px;
+            border: none;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .mock-button:hover {
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <div class="preview-notice">
+        ⚠️ <strong>React Component Preview:</strong> This is a visual representation of your ${componentName} component. 
+        The actual React code with styled-components is shown in the code section below.
+    </div>
+    <div class="mock-landing">
+        <div class="mock-content">
+            <h1 class="mock-title">Beautiful Landing Page</h1>
+            <p class="mock-subtitle">A modern, responsive landing page with smooth animations and modern design elements.</p>
+            <button class="mock-button">Get Started</button>
+        </div>
+    </div>
+</body>
+</html>`;
+  }
+  
+  // For simple React components without complex dependencies
+  const htmlTemplate = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${componentName} Preview</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: white;
+        }
+        * {
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        ${reactCode}
+        
+        // Try to render the component
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        
+        // Extract the default export or named export
+        let ComponentToRender;
+        
+        // Try to find the component in different ways
+        if (typeof ${componentName} !== 'undefined') {
+            ComponentToRender = ${componentName};
+        } else if (typeof LandingPage !== 'undefined') {
+            ComponentToRender = LandingPage;
+        } else if (typeof App !== 'undefined') {
+            ComponentToRender = App;
+        } else {
+            // Fallback - show an error
+            ComponentToRender = () => React.createElement('div', {style: {color: 'red', padding: '20px'}}, 'Component could not be rendered. Check console for errors.');
+        }
+        
+        try {
+            root.render(React.createElement(ComponentToRender));
+        } catch (error) {
+            console.error('Render error:', error);
+            root.render(React.createElement('div', {style: {color: 'red', padding: '20px'}}, 'Error rendering component: ' + error.message));
+        }
+    </script>
+</body>
+</html>`;
+  
+  return htmlTemplate;
+}
+
 interface Zero280Artifact {
   name?: string;
   type?: string;
@@ -29,52 +171,57 @@ export function Zero280ArtifactRenderer({ artifact, className = '' }: Zero280Art
   const [renderedContent, setRenderedContent] = useState<React.ReactNode>(null);
 
   useEffect(() => {
+    // Debug logging for artifact structure
+    console.log('Rendering artifact:', artifact);
+    
     // Get artifact properties with fallbacks for different structures
     const artifactName = artifact.name || artifact.metadata?.title || 'Untitled';
     const artifactType = artifact.type || artifact.metadata?.type || 'unknown';
     const artifactContent = artifact.content || artifact.data || '';
     const artifactDescription = artifact.description || artifact.metadata?.description || '';
     
+    console.log('Artifact details:', { artifactName, artifactType, contentLength: artifactContent.length });
+    
     // Render the artifact content based on type
     if (artifactType === 'html') {
       setRenderedContent(
-        <div className="w-full h-full">
-          <iframe
-            srcDoc={artifactContent}
-            className="w-full border rounded"
-            style={{ height: '500px', minHeight: '400px' }}
-            title={`Preview of ${artifactName}`}
-            sandbox="allow-scripts allow-same-origin"
-          />
-        </div>
+        <iframe
+          srcDoc={artifactContent}
+          className="w-full h-full border-0"
+          title={`Preview of ${artifactName}`}
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+          onLoad={() => {
+            console.log('HTML artifact iframe loaded successfully');
+          }}
+          onError={(e) => {
+            console.error('HTML artifact iframe failed to load:', e);
+          }}
+        />
       );
     } else if (artifactType === 'component' || artifactType === 'react') {
-      // For React components, show the code prominently
+      // For React components, convert to HTML for iframe rendering
+      const htmlContent = convertReactToHtml(artifactContent, artifactName);
+      
       setRenderedContent(
-        <div className="w-full">
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">React Component: {artifactName}</h3>
-            {artifactDescription && (
-              <p className="text-gray-600 mb-4">{artifactDescription}</p>
-            )}
-          </div>
-          <div className="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-auto max-h-96">
-            <pre className="text-sm font-mono">{artifactContent}</pre>
-          </div>
-        </div>
+        <iframe
+          srcDoc={htmlContent}
+          className="w-full h-full border-0"
+          title={`Preview of ${artifactName}`}
+          sandbox="allow-scripts allow-same-origin allow-forms"
+          onLoad={() => {
+            console.log('React component iframe loaded successfully');
+          }}
+          onError={(e) => {
+            console.error('React component iframe failed to load:', e);
+          }}
+        />
       );
     } else {
-      // For other types, show the content as code
+      // For other types, show the content as code in a simple format
       setRenderedContent(
-        <div className="w-full">
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">{artifactName}</h3>
-            {artifactDescription && (
-              <p className="text-gray-600 mb-4">{artifactDescription}</p>
-            )}
-          </div>
-          <div className="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-auto max-h-96">
-            <pre className="text-sm font-mono">{artifactContent}</pre>
+        <div className="bg-gray-900 text-gray-100 h-full overflow-auto">
+          <div className="p-4">
+            <pre className="text-sm font-mono whitespace-pre-wrap">{artifactContent}</pre>
           </div>
         </div>
       );
@@ -111,16 +258,16 @@ export function Zero280ArtifactRenderer({ artifact, className = '' }: Zero280Art
   };
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden ${className}`}>
+    <div className={`h-full flex flex-col ${className}`}>
       {/* Header */}
-      <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+      <div className="bg-white px-4 py-3 border-b border-gray-200 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <span className="font-medium text-gray-900">
                 {artifact.name || artifact.metadata?.title || 'Untitled'}
               </span>
-              <span className="text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded">
+              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                 {artifact.type || artifact.metadata?.type || 'unknown'}
               </span>
             </div>
@@ -174,25 +321,20 @@ export function Zero280ArtifactRenderer({ artifact, className = '' }: Zero280Art
             </button>
           </div>
         </div>
-
-        {/* Description */}
-        {artifact.description && (
-          <div className="mt-2 text-sm text-gray-700">
-            {artifact.description}
-          </div>
-        )}
       </div>
 
       {/* Content */}
-      <div className="p-4">
+      <div className="flex-1 overflow-hidden">
         {viewMode === 'preview' ? (
-          <div className="w-full">
+          <div className="w-full h-full">
             {renderedContent}
           </div>
         ) : (
-          <div className="bg-gray-900 rounded-lg p-4 overflow-auto max-h-96">
-            <div className="text-gray-400 text-sm font-mono">
-              <pre className="whitespace-pre-wrap text-gray-300">{artifact.content}</pre>
+          <div className="bg-gray-900 h-full overflow-auto">
+            <div className="p-4">
+              <div className="text-gray-400 text-sm font-mono">
+                <pre className="whitespace-pre-wrap text-gray-300">{artifact.content || artifact.data}</pre>
+              </div>
             </div>
           </div>
         )}

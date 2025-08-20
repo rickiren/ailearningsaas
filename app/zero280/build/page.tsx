@@ -282,15 +282,20 @@ export default function Zero280BuildPage() {
         if (data.artifacts && data.artifacts.length > 0) {
           console.log('Setting artifacts (initial):', data.artifacts);
           // Transform artifacts to match the expected structure
-          const transformedArtifacts = data.artifacts.map((artifact: any) => ({
-            name: artifact.metadata?.title || artifact.name || 'Untitled',
-            type: artifact.metadata?.type || artifact.type || 'unknown',
-            content: artifact.data || artifact.content || '',
-            description: artifact.metadata?.description || artifact.description || '',
-            preview: artifact.metadata?.preview || artifact.preview || '',
-            metadata: artifact.metadata,
-            data: artifact.data
-          }));
+          const transformedArtifacts = data.artifacts.map((artifact: any) => {
+            console.log('Transforming artifact:', artifact);
+            const transformed = {
+              name: artifact.name || artifact.metadata?.title || 'Untitled',
+              type: artifact.type || artifact.metadata?.type || 'unknown', 
+              content: artifact.content || artifact.data || '',
+              description: artifact.description || artifact.metadata?.description || '',
+              preview: artifact.preview || artifact.metadata?.preview || '',
+              metadata: artifact.metadata,
+              data: artifact.data
+            };
+            console.log('Transformed artifact:', transformed);
+            return transformed;
+          });
           setCurrentArtifacts(transformedArtifacts);
         } else {
           console.log('No artifacts in response (initial)');
@@ -515,7 +520,21 @@ export default function Zero280BuildPage() {
         } else if (data.artifacts && data.artifacts.length > 0) {
           // This is a new artifact creation (first time)
           console.log('Setting new artifacts (submit):', data.artifacts);
-          setCurrentArtifacts(data.artifacts);
+          const transformedArtifacts = data.artifacts.map((artifact: any) => {
+            console.log('Transforming new artifact:', artifact);
+            const transformed = {
+              name: artifact.name || artifact.metadata?.title || 'Untitled',
+              type: artifact.type || artifact.metadata?.type || 'unknown',
+              content: artifact.content || artifact.data || '',
+              description: artifact.description || artifact.metadata?.description || '',
+              preview: artifact.preview || artifact.metadata?.preview || '',
+              metadata: artifact.metadata,
+              data: artifact.data
+            };
+            console.log('Transformed new artifact:', transformed);
+            return transformed;
+          });
+          setCurrentArtifacts(transformedArtifacts);
         } else {
           console.log('No artifacts or edits in response (submit)');
         }
@@ -841,32 +860,25 @@ export default function Zero280BuildPage() {
         </div>
 
         {/* Right Column - Preview/Code Generator */}
-        <div className="flex-1 bg-gray-50 flex flex-col items-center justify-center">
+        <div className="flex-1 bg-white flex flex-col">
           {viewMode === 'preview' ? (
             /* Preview Mode */
             currentArtifacts.length > 0 ? (
               /* Display Generated Artifacts */
-              <div className="w-full h-full p-6 overflow-auto">
-                <div className="mb-6">
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Live Preview</h2>
-                  <p className="text-gray-600">Your generated components and content appear here</p>
-                  <div className="text-sm text-gray-500">
-                    Working on: {currentArtifacts[0]?.name || 'Current Artifact'}
-                  </div>
-                </div>
-                
-                {/* Only show the current working artifact - never multiple */}
+              <div className="w-full h-full flex flex-col">
+                {/* Only show the current working artifact - clean layout like Claude */}
                 {currentArtifacts.length > 0 && (
                   <Zero280ArtifactRenderer 
                     key={currentArtifacts[0].name || 'current-artifact'}
                     artifact={currentArtifacts[0]} 
-                    className="mb-8"
+                    className="flex-1"
                   />
                 )}
               </div>
             ) : (
               /* Default Preview State */
-              <div className="text-center">
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center">
                 <svg className="w-24 h-24 text-gray-300 mx-auto mb-6" viewBox="0 0 24 24" fill="none">
                   <path
                     d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
@@ -896,43 +908,30 @@ export default function Zero280BuildPage() {
                     <span className="text-sm">Collaborate at source, via GitHub</span>
                   </div>
                 </div>
+                </div>
               </div>
             )
           ) : (
             /* Code Mode */
-            <div className="w-full h-full p-6">
-              <div className="bg-gray-900 rounded-lg p-4 h-full overflow-auto">
-                <div className="text-gray-400 text-sm font-mono">
-                  {currentArtifacts.length > 0 ? (
-                    currentArtifacts.map((artifact, index) => (
-                      <div key={index} className="mb-6">
-                        <div className="mb-2 text-green-400">
-                          // {artifact.name} - {artifact.type}
-                        </div>
-                        <div className="mb-2 text-blue-400">
-                          // {artifact.description}
-                        </div>
-                        <div className="text-gray-300">
-                          <pre className="whitespace-pre-wrap">{artifact.content}</pre>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <>
-                      <div className="mb-4">
-                        <span className="text-green-400">// No artifacts generated yet</span>
-                      </div>
-                      <div className="mb-2">
-                        <span className="text-blue-400">// Try asking me to build something!</span>
-                      </div>
-                      <div className="mb-2">
-                        <span className="text-gray-300">// Example: "build a login form"</span>
-                      </div>
-                    </>
-                  )}
+            currentArtifacts.length > 0 ? (
+              <div className="w-full h-full flex flex-col">
+                <Zero280ArtifactRenderer 
+                  key={currentArtifacts[0].name || 'current-artifact'}
+                  artifact={currentArtifacts[0]} 
+                  className="flex-1"
+                />
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="bg-gray-900 rounded-lg p-8 max-w-md">
+                  <div className="text-gray-400 text-sm font-mono space-y-2">
+                    <div className="text-green-400">// No artifacts generated yet</div>
+                    <div className="text-blue-400">// Try asking me to build something!</div>
+                    <div className="text-gray-300">// Example: "build a login form"</div>
+                  </div>
                 </div>
               </div>
-            </div>
+            )
           )}
         </div>
       </div>
