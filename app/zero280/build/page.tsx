@@ -160,7 +160,8 @@ export default function Zero280BuildPage() {
       // Load the artifact first
       const artifactResponse = await fetch(`/api/artifacts/${artifactId}`);
       if (artifactResponse.ok) {
-        const artifact = await artifactResponse.json();
+        const data = await artifactResponse.json();
+        const artifact = data.artifact;
         
         // Transform and set the current artifacts to include this one
         const transformedArtifact = {
@@ -194,9 +195,17 @@ export default function Zero280BuildPage() {
         }
         
         console.log('Loaded artifact and conversation:', artifactId);
+        console.log('Artifact data:', artifact);
+        setHasInitialized(true);
+      } else {
+        console.error('Failed to load artifact:', artifactResponse.status, artifactResponse.statusText);
+        const errorText = await artifactResponse.text();
+        console.error('Error response:', errorText);
+        setHasInitialized(true);
       }
     } catch (error) {
       console.error('Error loading artifact and conversation:', error);
+      setHasInitialized(true);
     }
   };
 
