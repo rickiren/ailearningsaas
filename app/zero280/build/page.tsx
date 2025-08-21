@@ -11,6 +11,7 @@ import { ConversationManager } from '@/components/chat/conversation-manager';
 import { useProgressTracker, progressHelpers } from '@/lib/progress-tracker';
 
 interface Artifact {
+  id?: string;
   name: string;
   type: string;
   content: string;
@@ -68,9 +69,41 @@ export default function Zero280BuildPage() {
     completeMessageExecution
   } = useProgressTracker();
   
+  // Immediate visual response state
+  const [currentStep, setCurrentStep] = useState<'idle' | 'analyzing' | 'building' | 'complete'>('idle');
+  const [isExpanded, setIsExpanded] = useState(false);
+  
   const searchParams = useSearchParams();
   const router = useRouter();
   
+  // Function to expand relevant containers for immediate visual feedback
+  const expandRelevantContainers = () => {
+    setIsExpanded(true);
+    // Scroll to show the progress area
+    scrollToBottom();
+  };
+
+  // Function to scroll chat to bottom
+  const scrollToBottom = () => {
+    setTimeout(() => {
+      const progressArea = document.querySelector('.chat-sidebar');
+      if (progressArea) {
+        progressArea.scrollTo({
+          top: progressArea.scrollHeight,
+          behavior: 'smooth'
+        });
+      }
+    }, 100); // Slight delay to ensure content is rendered
+  };
+
+  // Function to reset step indicator after completion
+  const resetStepIndicator = () => {
+    setTimeout(() => {
+      setCurrentStep('idle');
+      setIsExpanded(false);
+    }, 3000); // Reset after 3 seconds
+  };
+
   useEffect(() => {
     const message = searchParams.get('message');
     const conversationId = searchParams.get('conversationId');
@@ -103,6 +136,25 @@ export default function Zero280BuildPage() {
   useEffect(() => {
     console.log('Current artifacts changed:', currentArtifacts);
   }, [currentArtifacts]);
+
+  // Auto-scroll when chat history updates
+  useEffect(() => {
+    scrollToBottom();
+  }, [chatHistory]);
+
+  // Auto-scroll when current step changes (thinking indicators)
+  useEffect(() => {
+    if (currentStep !== 'idle') {
+      scrollToBottom();
+    }
+  }, [currentStep]);
+
+  // Auto-scroll when streaming content updates
+  useEffect(() => {
+    if (isStreamingCode && streamedContent) {
+      scrollToBottom();
+    }
+  }, [isStreamingCode, streamedContent]);
 
   const loadExistingConversation = async (conversationId: string) => {
     try {
@@ -137,6 +189,7 @@ export default function Zero280BuildPage() {
           const artifactsData = await artifactsResponse.json();
           // Transform artifacts to match the expected structure
           const transformedArtifacts = (artifactsData.artifacts || []).map((artifact: any) => ({
+            id: artifact.id,
             name: artifact.metadata?.title || artifact.name || 'Untitled',
             type: artifact.metadata?.type || artifact.type || 'unknown',
             content: artifact.data || artifact.content || '',
@@ -165,6 +218,7 @@ export default function Zero280BuildPage() {
         
         // Transform and set the current artifacts to include this one
         const transformedArtifact = {
+          id: artifact.id,
           name: artifact.metadata?.title || artifact.name || 'Untitled',
           type: artifact.metadata?.type || artifact.type || 'unknown',
           content: artifact.data || artifact.content || '',
@@ -175,12 +229,16 @@ export default function Zero280BuildPage() {
         };
         setCurrentArtifacts([transformedArtifact]);
         
-        // Try to find the associated conversation through the artifact's metadata
-        if (artifact.metadata?.conversationId) {
+        // Try to find the associated conversation through the artifact's conversation_id field
+        if (artifact.conversation_id) {
+          setCurrentConversationId(artifact.conversation_id);
+          await loadExistingConversation(artifact.conversation_id);
+        } else if (artifact.metadata?.conversationId) {
+          // Fallback to metadata if conversation_id is not directly available
           setCurrentConversationId(artifact.metadata.conversationId);
           await loadExistingConversation(artifact.metadata.conversationId);
         } else {
-          // If no conversation ID in metadata, try to find by project ID
+          // If no conversation ID found, try to find by project ID
           if (artifact.metadata?.projectId) {
             const conversationsResponse = await fetch(`/api/conversations?projectId=${artifact.metadata.projectId}`);
             if (conversationsResponse.ok) {
@@ -196,6 +254,7 @@ export default function Zero280BuildPage() {
         
         console.log('Loaded artifact and conversation:', artifactId);
         console.log('Artifact data:', artifact);
+        console.log('Conversation ID found:', artifact.conversation_id || artifact.metadata?.conversationId);
         setHasInitialized(true);
       } else {
         console.error('Failed to load artifact:', artifactResponse.status, artifactResponse.statusText);
@@ -216,7 +275,10 @@ export default function Zero280BuildPage() {
       return;
     }
     
+    // IMMEDIATE (0ms delay) - Show instant feedback
     setIsLoading(true);
+    setCurrentStep('analyzing');
+    expandRelevantContainers();
     
     const timestamp = new Date().toLocaleTimeString('en-US', { 
       hour: 'numeric', 
@@ -305,6 +367,7 @@ export default function Zero280BuildPage() {
           // This is initial artifact creation
           console.log('Streaming initial artifact');
           stopThinking(); // Stop thinking as soon as we start streaming
+          setCurrentStep('building'); // Transition to building step
           
           const artifact = data.artifacts[0];
           setStreamingArtifact(artifact);
@@ -324,10 +387,11 @@ export default function Zero280BuildPage() {
               clearInterval(streamInterval);
               setIsStreamingCode(false);
               
-              // Now update the artifacts with the final code
+              // Now update the artifacts with the final code - only after streaming is complete
               const transformedArtifacts = data.artifacts.map((artifact: any) => {
                 console.log('Transforming artifact:', artifact);
                 const transformed = {
+                  id: artifact.id,
                   name: artifact.name || artifact.metadata?.title || 'Untitled',
                   type: artifact.type || artifact.metadata?.type || 'unknown', 
                   content: artifact.content || artifact.data || '',
@@ -341,9 +405,11 @@ export default function Zero280BuildPage() {
               });
               setCurrentArtifacts(transformedArtifacts);
               
+              setCurrentStep('complete'); // Transition to complete step
+              resetStepIndicator(); // Reset after 3 seconds
               completeMessageExecution();
             }
-          }, 100);
+          }, 50); // Faster streaming for better effect
         } else {
           // Complete progress tracking
           stopThinking();
@@ -455,14 +521,18 @@ export default function Zero280BuildPage() {
 
     const userMessage = input.trim();
     setInput('');
-    setIsLoading(true);
     
-    // Start progress tracking
+    // IMMEDIATE (0ms delay) - Show instant feedback
+    setIsLoading(true);
+    setCurrentStep('analyzing');
+    expandRelevantContainers();
+    
+    // Start progress tracking immediately
     const messageId = `msg_${Date.now()}_ai`;
     startMessageExecution(messageId);
-    startThinking(messageId, "Processing your request...");
+    startThinking(messageId, "Analyzing your request...");
 
-    // Add user message to chat
+    // Add user message to chat immediately
     const newUserMessage = {
       type: 'user' as const,
       message: userMessage,
@@ -477,7 +547,7 @@ export default function Zero280BuildPage() {
       id: `msg_${Date.now()}_user`
     };
 
-    // Add AI thinking message
+    // Add AI thinking message immediately
     const newAIMessage = {
       type: 'ai' as const,
       message: 'Thinking...',
@@ -488,6 +558,7 @@ export default function Zero280BuildPage() {
 
     setChatHistory(prev => [...prev, newUserMessage, newAIMessage]);
 
+    // THEN make AI call
     try {
       // If we have an existing artifact, use the edit endpoint
       // If not, use the create endpoint
@@ -562,6 +633,7 @@ export default function Zero280BuildPage() {
           // This is an edit - stop thinking and start streaming immediately
           console.log('Streaming edited code');
           stopThinking(); // Stop thinking as soon as we start streaming
+          setCurrentStep('building'); // Transition to building step
           
           setStreamingArtifact({
             ...currentArtifacts[0],
@@ -575,7 +647,7 @@ export default function Zero280BuildPage() {
           const lines = content.split('\n');
           let currentLine = 0;
           
-          const streamInterval = setInterval(() => {
+          const streamInterval = setInterval(async () => {
             if (currentLine < lines.length) {
               setStreamedContent(prev => prev + lines[currentLine] + '\n');
               currentLine++;
@@ -586,12 +658,37 @@ export default function Zero280BuildPage() {
               // Now update the artifacts with the final code
               const updatedArtifacts = currentArtifacts.map(artifact => ({
                 ...artifact,
-                content: data.editedCode,
-                lastModified: new Date().toISOString()
+                content: data.editedCode
               }));
               setCurrentArtifacts(updatedArtifacts);
               console.log('Artifacts updated after streaming:', updatedArtifacts[0].name);
               
+              // Save the updated artifact to the database
+              if (currentArtifacts[0].id) {
+                try {
+                  const updateResponse = await fetch(`/api/artifacts/${currentArtifacts[0].id}`, {
+                    method: 'PUT',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      content: data.editedCode,
+                      updated_at: new Date().toISOString()
+                    }),
+                  });
+                  
+                  if (updateResponse.ok) {
+                    console.log('Artifact saved to database successfully');
+                  } else {
+                    console.error('Failed to save artifact to database:', updateResponse.status);
+                  }
+                } catch (error) {
+                  console.error('Error saving artifact to database:', error);
+                }
+              }
+              
+              setCurrentStep('complete'); // Transition to complete step
+              resetStepIndicator(); // Reset after 3 seconds
               completeMessageExecution();
             }
           }, 50); // Faster streaming for edits
@@ -599,6 +696,7 @@ export default function Zero280BuildPage() {
           // This is a new artifact creation (first time)
           console.log('Streaming new artifact');
           stopThinking(); // Stop thinking as soon as we start streaming
+          setCurrentStep('building'); // Transition to building step
           
           const artifact = data.artifacts[0];
           setStreamingArtifact(artifact);
@@ -618,10 +716,11 @@ export default function Zero280BuildPage() {
               clearInterval(streamInterval);
               setIsStreamingCode(false);
               
-              // Now update the artifacts with the final code
+              // Now update the artifacts with the final code - only after streaming is complete
               const transformedArtifacts = data.artifacts.map((artifact: any) => {
                 console.log('Transforming new artifact:', artifact);
                 const transformed = {
+                  id: artifact.id,
                   name: artifact.name || artifact.metadata?.title || 'Untitled',
                   type: artifact.type || artifact.metadata?.type || 'unknown',
                   content: artifact.content || artifact.data || '',
@@ -635,9 +734,11 @@ export default function Zero280BuildPage() {
               });
               setCurrentArtifacts(transformedArtifacts);
               
+              setCurrentStep('complete'); // Transition to complete step
+              resetStepIndicator(); // Reset after 3 seconds
               completeMessageExecution();
             }
-          }, 100);
+          }, 50); // Faster streaming for better effect
         } else {
           // Complete progress tracking
           stopThinking();
@@ -675,6 +776,23 @@ export default function Zero280BuildPage() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+      <style jsx>{`
+        @keyframes blink {
+          0%, 50% { opacity: 1; }
+          51%, 100% { opacity: 0; }
+        }
+        
+        @keyframes typewriter {
+          from { width: 0; }
+          to { width: 100%; }
+        }
+        
+        .typewriter-text {
+          overflow: hidden;
+          white-space: nowrap;
+          animation: typewriter 0.1s steps(1);
+        }
+      `}</style>
       {/* Top Navigation Bar */}
       <div className="bg-white border-b border-gray-200 px-6 py-3">
         <div className="flex items-center justify-between">
@@ -769,6 +887,8 @@ export default function Zero280BuildPage() {
             />
           </div>
 
+
+
           {/* Chat History - Scrollable Area */}
           <div 
             className="flex-1 overflow-y-auto p-4 space-y-4 chat-sidebar"
@@ -830,6 +950,41 @@ export default function Zero280BuildPage() {
               </div>
             ))}
             
+            {/* Step Indicator in Chat Flow - Shows current progress after messages */}
+            {currentStep !== 'idle' && (
+              <div className="flex justify-start">
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl px-4 py-3 max-w-xs">
+                  <div className="flex items-center space-x-3">
+                    {currentStep === 'analyzing' && (
+                      <>
+                        <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                        <span className="text-sm font-medium text-blue-700">Analyzing your request...</span>
+                      </>
+                    )}
+                    {currentStep === 'building' && (
+                      <>
+                        <div className="w-3 h-3 bg-orange-500 rounded-full animate-pulse"></div>
+                        <span className="text-sm font-medium text-orange-700">Building your artifact...</span>
+                      </>
+                    )}
+                    {currentStep === 'complete' && (
+                      <>
+                        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                        <span className="text-sm font-medium text-green-700">Complete!</span>
+                      </>
+                    )}
+                    {currentStep === 'analyzing' && (
+                      <div className="flex space-x-1 ml-2">
+                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce"></div>
+                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            
             {/* Progress Indicators - Only show when not actively thinking via AI message */}
             {isActive && executions.length > 0 && !isThinking && (
               <ToolExecutionProgress 
@@ -848,14 +1003,41 @@ export default function Zero280BuildPage() {
             
             {/* Code Streaming Preview - Show when streaming or when complete */}
             {streamingArtifact && (
-              <CodeStreamingPreview
-                artifactName={streamingArtifact.name}
-                artifactType={streamingArtifact.type}
-                isStreaming={isStreamingCode}
-                streamedContent={streamedContent}
-                finalContent={streamedContent} // Pass the final content when streaming is complete
-                className="mb-4"
-              />
+              <div className="mb-4">
+                <div className="bg-gray-900 rounded-lg border border-gray-700 overflow-hidden">
+                  {/* Header */}
+                  <div className="bg-gray-800 px-4 py-2 border-b border-gray-700 flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                      <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                      <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                      <span className="text-gray-300 text-sm ml-2">{streamingArtifact.name}</span>
+                    </div>
+                    {isStreamingCode && (
+                      <div className="flex items-center space-x-2">
+                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse shadow-lg shadow-green-400/50"></div>
+                        <span className="text-green-400 text-xs font-medium">Streaming...</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Code Editor Area - Fixed height with internal scroll */}
+                  <div className="h-64 overflow-y-auto bg-gray-900" ref={(el) => {
+                    if (el && isStreamingCode) {
+                      el.scrollTop = el.scrollHeight;
+                    }
+                  }}>
+                    <pre className="text-sm text-gray-100 p-4 font-mono leading-relaxed">
+                      <code>
+                        {streamedContent || '// Code will appear here...'}
+                        {isStreamingCode && (
+                          <span className="inline-block w-2 h-4 bg-green-400 animate-pulse ml-1" style={{animation: 'blink 1s infinite'}}></span>
+                        )}
+                      </code>
+                    </pre>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
 
@@ -944,7 +1126,7 @@ export default function Zero280BuildPage() {
                 {/* Only show the current working artifact - clean layout like Claude */}
                 {currentArtifacts.length > 0 && (
                   <Zero280ArtifactRenderer 
-                    key={`${currentArtifacts[0].name || 'current-artifact'}-${currentArtifacts[0].lastModified || Date.now()}`}
+                    key={`${currentArtifacts[0].name || 'current-artifact'}-${Date.now()}`}
                     artifact={currentArtifacts[0]} 
                     className="flex-1"
                   />
@@ -991,7 +1173,7 @@ export default function Zero280BuildPage() {
             currentArtifacts.length > 0 ? (
               <div className="w-full h-full flex flex-col">
                 <Zero280ArtifactRenderer 
-                  key={`${currentArtifacts[0].name || 'current-artifact'}-${currentArtifacts[0].lastModified || Date.now()}`}
+                  key={`${currentArtifacts[0].name || 'current-artifact'}-${Date.now()}`}
                   artifact={currentArtifacts[0]} 
                   className="flex-1"
                 />

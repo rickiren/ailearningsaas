@@ -181,9 +181,12 @@ export function Zero280ArtifactRenderer({ artifact, className = '' }: Zero280Art
     const artifactDescription = artifact.description || artifact.metadata?.description || '';
     
     console.log('Artifact details:', { artifactName, artifactType, contentLength: artifactContent.length });
+    console.log('Artifact type for rendering:', artifactType);
+    console.log('Will render as:', artifactType === 'html' || artifactType === 'interactive' || artifactType === 'drill' || artifactType === 'simulation' || artifactType === 'game' || artifactType === 'assessment' ? 'IFRAME (HTML)' : artifactType === 'component' || artifactType === 'react' ? 'IFRAME (React converted)' : 'CODE TEXT');
     
     // Render the artifact content based on type
-    if (artifactType === 'html') {
+    if (artifactType === 'html' || artifactType === 'interactive' || artifactType === 'drill' || artifactType === 'simulation' || artifactType === 'game' || artifactType === 'assessment') {
+      // For HTML and learning tool types, render in iframe
       setRenderedContent(
         <iframe
           key={`iframe-${artifactName}-${Date.now()}`} // Force re-render when content changes
@@ -192,10 +195,10 @@ export function Zero280ArtifactRenderer({ artifact, className = '' }: Zero280Art
           title={`Preview of ${artifactName}`}
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
           onLoad={() => {
-            console.log('HTML artifact iframe loaded successfully');
+            console.log('HTML/Learning tool iframe loaded successfully');
           }}
           onError={(e) => {
-            console.error('HTML artifact iframe failed to load:', e);
+            console.error('HTML/Learning tool iframe failed to load:', e);
           }}
         />
       );

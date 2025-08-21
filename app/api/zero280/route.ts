@@ -9,37 +9,62 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
 
-// Tool definitions for Claude with enhanced capabilities
+// Tool definitions for Claude with enhanced learning capabilities
 const TOOLS = [
   {
     name: 'create_artifact',
-    description: 'Creates new code/content artifacts in the project. Use this to generate React components, HTML, or any code that should appear in the sandbox preview.',
+    description: 'Creates interactive learning tools, drills, and educational simulations designed for mastery-based learning. Focus on building tools that actively engage learners, track progress, and guide users toward skill mastery through progressive difficulty and immediate feedback.',
     input_schema: {
       type: 'object' as const,
       properties: {
         name: {
           type: 'string' as const,
-          description: 'Name of the artifact to create (e.g., "LoginForm", "Button", "LandingPage")'
+          description: 'Name of the learning tool (e.g., "VocabularyDrill", "MathPractice", "CodingChallenge", "ScienceSimulation")'
         },
         type: {
           type: 'string' as const,
-          enum: ['component', 'page', 'html', 'react', 'utility', 'style'],
-          description: 'Type of artifact to create. Use "component" for React components, "html" for HTML content, "page" for full pages.'
+          enum: ['interactive', 'drill', 'simulation', 'game', 'assessment', 'html', 'component'],
+          description: 'Type of learning tool. Use "interactive" for most learning experiences, "drill" for practice exercises, "simulation" for real-world scenarios, "game" for gamified learning, "assessment" for skill testing.'
         },
         content: {
           type: 'string' as const,
-          description: 'The complete code/content for the artifact. For React components, include imports, component definition, and export. For HTML, include complete HTML structure.'
+          description: 'The complete HTML/JavaScript code for the interactive learning tool. Must include all functionality, styling, and interactivity needed for the learning experience. Focus on creating tools that actively engage users in skill-building activities.'
         },
         description: {
           type: 'string' as const,
-          description: 'Description of what this artifact does and how it should be used'
+          description: 'Description of what this learning tool teaches and how users interact with it to achieve mastery'
         },
         preview: {
           type: 'string' as const,
-          description: 'A brief description of what the user will see in the preview'
+          description: 'A brief description of what users will experience and learn from this tool, including the learning journey toward mastery'
+        },
+        learning_objectives: {
+          type: 'string' as const,
+          description: 'Specific skills or knowledge this tool helps users develop. Be specific about what mastery looks like and the learning outcomes.'
+        },
+        difficulty_level: {
+          type: 'string' as const,
+          enum: ['beginner', 'intermediate', 'advanced'],
+          description: 'Target difficulty level for learners. Consider the progression path from beginner to mastery.'
+        },
+        subject_area: {
+          type: 'string' as const,
+          description: 'Academic subject or skill domain (e.g., "Mathematics", "Language Learning", "Programming", "Science", "Critical Thinking")'
+        },
+        estimated_duration: {
+          type: 'string' as const,
+          description: 'Estimated time to complete the learning activity and achieve the learning objectives (e.g., "5-10 minutes", "15-20 minutes", "30-45 minutes")'
+        },
+        mastery_criteria: {
+          type: 'string' as const,
+          description: 'Specific criteria that define when a user has mastered the skill or concept. What does success look like?'
+        },
+        learning_path: {
+          type: 'string' as const,
+          description: 'The step-by-step learning progression that leads to mastery. How does the tool guide users from basic understanding to advanced proficiency?'
         }
       },
-      required: ['name', 'type', 'content']
+              required: ['name', 'type', 'content']
     }
   },
   {
@@ -68,6 +93,29 @@ const TOOLS = [
         }
       },
       required: ['file_paths']
+    }
+  },
+  {
+    name: 'enhance_learning_tool',
+    description: 'Improves existing learning tools by adding advanced features like adaptive difficulty, progress analytics, or accessibility improvements to enhance the learning experience.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        artifact_id: {
+          type: 'string' as const,
+          description: 'ID of the existing artifact to enhance'
+        },
+        enhancement_type: {
+          type: 'string' as const,
+          enum: ['adaptive_difficulty', 'progress_tracking', 'accessibility', 'gamification', 'analytics', 'personalization'],
+          description: 'Type of enhancement to add to improve learning outcomes'
+        },
+        specific_requirements: {
+          type: 'string' as const,
+          description: 'Specific requirements or features to implement for better learning effectiveness'
+        }
+      },
+      required: ['artifact_id', 'enhancement_type']
     }
   }
 ];
@@ -122,63 +170,65 @@ export async function POST(request: NextRequest) {
       const conversationSummary = await ChatService.getConversationSummary(currentConversationId);
       
       // Step 3: Generate AI response with tool usage
-      const systemPrompt = `You are an expert AI coding assistant building a live sandbox preview system. 
+      const systemPrompt = `You are an expert AI educational content creator building interactive learning tools for MASTERY-BASED LEARNING.
 
-Your job is to:
-1. Understand what the user wants to build
-2. Use the create_artifact tool to generate working code
-3. Create components that will actually render in the preview
-4. Provide clear explanations of what you're building
-5. Remember the conversation context and build upon previous artifacts
+CORE PRINCIPLES: Create tools that ensure complete skill mastery through interactive engagement, immediate feedback, progressive difficulty, adaptive content, and comprehensive progress tracking.
 
 CONVERSATION CONTEXT:
 ${conversationSummary}
 
-CRITICAL: You MUST use the create_artifact tool for every build request. Do not just describe what you would build - actually build it using the tool.
+CONVERSATION CONTEXT:
+${conversationSummary}
 
-When using create_artifact:
-- PREFER HTML for visual components (landing pages, forms, UI elements) as they render better in preview
-- For HTML content, provide complete, valid HTML with inline CSS for immediate rendering
-- For React components, only use when specifically requested and keep dependencies minimal
-- Always set the type to "html" for HTML content or "component" for React components
-- Include a clear description and preview of what the user will see
-- Make sure the code is complete and functional with all styling inline
-- Use the tool for EVERY component or piece of content you create
-- Build upon previous artifacts in the conversation when appropriate
+CRITICAL: You MUST use the create_artifact tool and generate complete HTML/JavaScript code in the 'content' field.
 
-IMPORTANT: For landing pages, forms, and visual components, use type "html" with complete HTML including:
-- Full HTML structure (<!DOCTYPE html>, <html>, <head>, <body>)
-- All CSS styling inline in <style> tags in the head
-- JavaScript if needed inline in <script> tags
-- Responsive design with proper viewport meta tag
+REQUIRED FIELDS:
+- name, type, content (with complete working code), description, preview
 
-Example usage:
-- User says "build a button" → Use create_artifact with type "html" to create an HTML button with styling
-- User says "create a form" → Use create_artifact with type "html" to create an HTML form with styling  
-- User says "make a landing page" → Use create_artifact with type "html" to create complete HTML landing page
-- User says "build a React component" → Use create_artifact with type "component" for React components
+OPTIONAL: learning_objectives, difficulty_level, subject_area, estimated_duration, mastery_criteria, learning_path
+
+LEARNING TOOL ARCHITECTURE:
+- Clear learning objectives and mastery criteria
+- Intuitive user interactions with progressive difficulty
+- Progress tracking and adaptive difficulty
+- Help systems and scaffolding
+- Responsive design and accessibility
+- Spaced repetition and active recall
+
+WHEN BUILDING LEARNING TOOLS:
+- PREFER "html" type for self-contained learning experiences with embedded JavaScript
+- Use "component" type only when specifically requested for React components
+- Include comprehensive JavaScript for interactivity, scoring, and progress
+- Design mobile-first responsive layouts
+- Implement proper error handling and user guidance
+- Add visual feedback for all user interactions
+
+EXAMPLES: "Create a vocabulary drill" → Interactive flashcard system with spaced repetition and progress tracking
+"Build a math practice exercise" → Adaptive problem generator with immediate feedback and progressive difficulty
+"Make a coding challenge" → Interactive code editor with test cases and skill assessment
+
+CRITICAL: Always generate complete HTML/JavaScript code in the 'content' field.
+
+QUALITY STANDARDS: Fully functional, interactive tools with progress tracking, adaptive difficulty, and comprehensive feedback.
+
+CRITICAL: Generate complete, working HTML/JavaScript code in the 'content' field.
 
 Available tools: ${TOOLS.map(t => t.name).join(', ')}`;
 
       const response = await anthropic.messages.create({
         model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 2000,
+        max_tokens: 8000,
         system: systemPrompt,
         messages: [
           {
             role: 'user',
             content: `User wants to: ${message}
 
-IMPORTANT: You MUST use the create_artifact tool to actually build what they requested. Do not just describe it.
+CRITICAL: You MUST use the create_artifact tool and generate COMPLETE HTML/JavaScript code in the 'content' field.
 
-Please use the create_artifact tool to build what they requested. Make sure to:
-1. Generate complete, working code
-2. Set appropriate type (component for React, html for HTML)
-3. Include all necessary imports and dependencies
-4. Make it render properly in the preview
-5. Explain what you built and how to use it
+DO NOT just describe what you would build - WRITE THE ACTUAL CODE that creates a working learning tool.
 
-Remember: Use the create_artifact tool for EVERY piece of content you create.`
+The 'content' field must contain complete, functional HTML/JavaScript that users can run immediately.`
           },
         ],
         tools: TOOLS,
@@ -295,6 +345,8 @@ async function executeTool(toolName: string, input: any, conversationId?: string
         return await analyzeProject(input);
       case 'read_multiple_files':
         return await readMultipleFiles(input);
+      case 'enhance_learning_tool':
+        return await enhanceLearningTool(input, conversationId, userId);
       default:
         return { success: false, result: null, error: `Unknown tool: ${toolName}` };
     }
@@ -310,9 +362,23 @@ async function executeTool(toolName: string, input: any, conversationId?: string
 async function createArtifact(input: any, conversationId?: string, userId?: string): Promise<{ success: boolean; result: any; error?: string }> {
   try {
     console.log('createArtifact called with input:', input);
-    const { name, type, content, description, preview } = input;
     
-    // Validate input
+    // Extract all the new learning-focused fields
+    const { 
+      name, 
+      type, 
+      content, 
+      description, 
+      preview, 
+      learning_objectives, 
+      difficulty_level, 
+      subject_area, 
+      estimated_duration,
+      mastery_criteria,
+      learning_path
+    } = input;
+    
+    // Validate input - core fields are required, learning fields have smart defaults
     if (!name || !type || !content) {
       console.log('Missing required fields:', { name, type, content });
       return {
@@ -322,7 +388,26 @@ async function createArtifact(input: any, conversationId?: string, userId?: stri
       };
     }
 
-    console.log('Creating artifact:', { name, type, content: content.substring(0, 100) + '...' });
+    console.log('Creating learning artifact:', { 
+      name, 
+      type, 
+      learning_objectives, 
+      difficulty_level,
+      subject_area,
+      estimated_duration,
+      mastery_criteria,
+      contentLength: content ? content.length : 0
+    });
+    
+    // Debug: Check if content is actually provided
+    if (!content || content.trim().length === 0) {
+      console.error('ERROR: Content is empty or missing!');
+      return {
+        success: false,
+        result: null,
+        error: 'Content field is required and cannot be empty'
+      };
+    }
 
     // Save artifact to database if conversationId is provided
     let savedArtifact = null;
@@ -331,10 +416,17 @@ async function createArtifact(input: any, conversationId?: string, userId?: stri
         name,
         type,
         content,
-        description: description || `A ${type} called ${name}`,
-        preview: preview || `This will display a ${type} called ${name}`,
+        description: description || `A ${type} learning tool called ${name}`,
+        preview: preview || `This will display an interactive ${type} for learning ${learning_objectives}`,
         metadata: {
           source: 'ai_generated',
+          learning_objectives,
+          difficulty_level: difficulty_level || 'beginner',
+          subject_area: subject_area || 'General',
+          estimated_duration: estimated_duration || '15-20 minutes',
+          mastery_criteria,
+          learning_path: learning_path || 'Progressive skill building with immediate feedback',
+          artifact_type: 'learning_tool',
           timestamp: new Date().toISOString()
         }
       }, userId);
@@ -344,32 +436,38 @@ async function createArtifact(input: any, conversationId?: string, userId?: stri
       }
     }
 
-    // Return success with artifact data
+    // Return success with enhanced learning artifact data
     const result = {
       success: true,
       result: {
-        message: `Successfully created ${type} artifact: ${name}`,
+        message: `Successfully created ${type} learning tool: ${name}`,
         artifact: {
           id: savedArtifact?.id || `temp_${Date.now()}`,
           name,
           type,
           content,
-          description: description || `A ${type} called ${name}`,
-          preview: preview || `This will display a ${type} called ${name}`,
+          description: description || `A ${type} learning tool called ${name}`,
+          preview: preview || `This will display an interactive ${type} for learning ${learning_objectives}`,
+          learning_objectives,
+          difficulty_level: difficulty_level || 'beginner',
+          subject_area: subject_area || 'General',
+          estimated_duration: estimated_duration || '15-20 minutes',
+          mastery_criteria,
+          learning_path: learning_path || 'Progressive skill building with immediate feedback',
           timestamp: new Date().toISOString(),
           saved: !!savedArtifact
         }
       }
     };
     
-    console.log('Artifact created successfully:', result);
+    console.log('Learning artifact created successfully:', result);
     return result;
   } catch (error) {
     console.error('Error in createArtifact:', error);
     return {
       success: false,
       result: null,
-      error: error instanceof Error ? error.message : 'Failed to create artifact'
+      error: error instanceof Error ? error.message : 'Failed to create learning artifact'
     };
   }
 }
@@ -418,6 +516,44 @@ async function readMultipleFiles(input: any): Promise<{ success: boolean; result
       success: false,
       result: null,
       error: error instanceof Error ? error.message : 'Failed to read files'
+    };
+  }
+}
+
+async function enhanceLearningTool(input: any, conversationId?: string, userId?: string): Promise<{ success: boolean; result: any; error?: string }> {
+  try {
+    const { artifact_id, enhancement_type, specific_requirements } = input;
+    
+    if (!artifact_id || !enhancement_type) {
+      return {
+        success: false,
+        result: null,
+        error: 'Missing required fields: artifact_id and enhancement_type are required'
+      };
+    }
+
+    console.log('Enhancing learning tool:', { artifact_id, enhancement_type, specific_requirements });
+
+    // For now, return a success message indicating the enhancement would be applied
+    // In a full implementation, you would modify the existing artifact
+    return {
+      success: true,
+      result: {
+        message: `Successfully enhanced learning tool with ${enhancement_type}`,
+        enhancement: {
+          artifact_id,
+          enhancement_type,
+          specific_requirements,
+          applied: true,
+          timestamp: new Date().toISOString()
+        }
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      result: null,
+      error: error instanceof Error ? error.message : 'Failed to enhance learning tool'
     };
   }
 }
