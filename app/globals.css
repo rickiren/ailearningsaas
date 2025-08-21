@@ -136,3 +136,271 @@ body {
   bottom: 0;
   z-index: 10;
 }
+
+/* Enhanced Animation Keyframes */
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes gradient {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInFromLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes bounce-gentle {
+  0%, 100% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0,0,0.2,1);
+  }
+  50% {
+    transform: translateY(-10%);
+    animation-timing-function: cubic-bezier(0.8,0,1,1);
+  }
+}
+
+/* Chat-specific animations */
+@keyframes message-appear {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes typing-indicator {
+  0%, 60%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Custom utility classes */
+.animate-shimmer {
+  animation: shimmer 2s linear infinite;
+}
+
+.animate-gradient {
+  animation: gradient 4s ease infinite;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out;
+}
+
+.animate-slide-in-right {
+  animation: slideInFromRight 0.3s ease-out;
+}
+
+.animate-slide-in-left {
+  animation: slideInFromLeft 0.3s ease-out;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.2s ease-out;
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+.animate-bounce-gentle {
+  animation: bounce-gentle 1s infinite;
+}
+
+.animate-message-appear {
+  animation: message-appear 0.3s ease-out;
+}
+
+.animate-typing {
+  animation: typing-indicator 1.4s ease-in-out infinite;
+}
+
+/* Smooth scrolling for chat messages */
+.chat-messages {
+  scroll-behavior: smooth;
+}
+
+/* Enhanced focus states */
+.focus-ring {
+  @apply focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-500;
+}
+
+/* Smooth transitions for interactive elements */
+.interactive {
+  transition: all 0.2s ease-out;
+}
+
+.interactive:hover {
+  transform: scale(1.05);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}
+
+.interactive:active {
+  transform: scale(0.95);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+/* Message bubble effects */
+.message-bubble {
+  transition: all 0.3s ease-out;
+}
+
+.message-bubble:hover {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+/* Loading state animations */
+.loading-dots {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.loading-dots div {
+  width: 0.5rem;
+  height: 0.5rem;
+  background-color: currentColor;
+  border-radius: 50%;
+  animation: bounce 1.4s ease-in-out infinite both;
+}
+
+.loading-dots div:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.loading-dots div:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+/* Improved glassmorphism effect */
+.glass {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.glass-dark {
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(51, 65, 85, 0.2);
+}
+
+/* Enhanced button styles */
+.btn-primary {
+  background: linear-gradient(to right, rgb(59 130 246), rgb(37 99 235));
+  color: white;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease-out;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(to right, rgb(37 99 235), rgb(29 78 216));
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  transform: scale(1.05);
+}
+
+.btn-primary:active {
+  transform: scale(0.95);
+}
+
+.btn-primary:focus {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(59 130 246 / 0.1);
+}
+
+.btn-secondary {
+  background: rgb(241 245 249);
+  color: rgb(51 65 85);
+  border: 1px solid rgb(226 232 240);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease-out;
+}
+
+.btn-secondary:hover {
+  background: rgb(226 232 240);
+  color: rgb(15 23 42);
+  border-color: rgb(203 213 225);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  transform: scale(1.05);
+}
+
+.btn-secondary:active {
+  transform: scale(0.95);
+}
+
+/* Progress bar enhancements */
+.progress-bar {
+  background: linear-gradient(to right, rgb(59 130 246), rgb(99 102 241));
+  transition: all 1s ease-out;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.progress-container {
+  background: rgb(226 232 240);
+  border-radius: 9999px;
+  overflow: hidden;
+  box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+}
+
+/* Skeleton loading improvements */
+.skeleton {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  background: linear-gradient(to right, rgb(226 232 240), rgb(248 250 252), rgb(226 232 240));
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}

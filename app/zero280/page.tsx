@@ -54,6 +54,45 @@ export default function Zero280Page() {
 
   return (
     <div className="min-h-screen flex">
+      <style jsx>{`
+        @font-face {
+          font-family: 'styreneB';
+          src: url('/styrene-font-family-1755760563-0/StyreneB-Regular-Trial-BF63f6cbe9db1d5.otf') format('opentype');
+          font-weight: 400;
+          font-style: normal;
+        }
+        
+        @font-face {
+          font-family: 'styreneB';
+          src: url('/styrene-font-family-1755760563-0/StyreneB-Bold-Trial-BF63f6cbe9f13bb.otf') format('opentype');
+          font-weight: 700;
+          font-style: normal;
+        }
+        
+        .styrene-text {
+          font-family: 'styreneB', system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+          font-weight: 400;
+          font-size: 15px;
+          line-height: 24px;
+          letter-spacing: normal;
+        }
+        
+        .styrene-heading {
+          font-family: 'styreneB', system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+          font-weight: 700;
+          font-size: 48px;
+          line-height: 1.2;
+          letter-spacing: normal;
+        }
+        
+        .styrene-subheading {
+          font-family: 'styreneB', system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+          font-weight: 400;
+          font-size: 20px;
+          line-height: 1.4;
+          letter-spacing: normal;
+        }
+      `}</style>
       {/* Left Sidebar */}
       <div className="w-16 bg-[#fafafa] flex flex-col items-center py-6 space-y-8">
         {/* Document/File Icon */}
@@ -109,10 +148,10 @@ export default function Zero280Page() {
         {/* Top Section - AI Creation Interface */}
         <div className="flex flex-col items-center justify-center px-4 py-16">
           <div className="text-center mb-12">
-            <h1 className="text-5xl font-bold text-gray-900 mb-4" style={{ fontFamily: '"styreneB", "styreneB Fallback", system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
+            <h1 className="styrene-heading text-gray-900 mb-4">
               The new way to build & sell online courses
             </h1>
-            <p className="text-xl text-gray-600" style={{ fontFamily: '"styreneB", "styreneB Fallback", system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
+            <p className="styrene-subheading text-gray-600">
               help people learn new skills with ai
             </p>
           </div>
@@ -131,8 +170,7 @@ export default function Zero280Page() {
                     }
                   }}
                   placeholder="i want to teach people how to..."
-                  className="w-full h-32 resize-none border-0 focus:ring-0 focus:outline-none text-gray-800 placeholder-gray-400 text-lg leading-relaxed"
-                  style={{ fontFamily: '"styreneB", "styreneB Fallback", system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}
+                  className="w-full h-20 resize-none border-0 focus:ring-0 focus:outline-none text-gray-800 placeholder-gray-400 text-base leading-relaxed styrene-text"
                 />
                 
                 <div className="flex justify-end mt-4">

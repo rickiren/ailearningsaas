@@ -33,9 +33,15 @@ export default function Zero280BuildPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [chatWidth, setChatWidth] = useState(320); // Default chat width
   const [isDragging, setIsDragging] = useState(false);
+  const [dragStartX, setDragStartX] = useState(0);
+  const [dragStartWidth, setDragStartWidth] = useState(0);
   const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview'); // New state for view mode
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentArtifacts, setCurrentArtifacts] = useState<Artifact[]>([]);
+  
+  // Chat mode state - controls whether AI can edit code or just chat
+  const [chatMode, setChatMode] = useState<'chat' | 'agent'>('agent'); // Default to agent mode for zero280
+  
   const [chatHistory, setChatHistory] = useState<Array<{
     type: 'user' | 'ai';
     message: string;
@@ -47,6 +53,32 @@ export default function Zero280BuildPage() {
   }>>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [hasInitialized, setHasInitialized] = useState(false);
+  
+  // Function to toggle between chat and agent modes
+  const toggleChatMode = () => {
+    const newMode = chatMode === 'chat' ? 'agent' : 'chat';
+    setChatMode(newMode);
+    
+    // Add a system message to indicate mode change
+    const modeMessage = {
+      type: 'ai' as const,
+      message: newMode === 'chat' 
+        ? '🔄 **Switched to Chat Mode**: I can now discuss and explain code, but I cannot make any changes to your project. Ask me anything about your code!'
+        : '🔄 **Switched to Agent Mode**: I can now read, write, and modify code files. I have full access to development tools.',
+      timestamp: new Date().toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      }) + ' on ' + new Date().toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric' 
+      }),
+      id: `mode_${Date.now()}`,
+      status: 'Mode Changed'
+    };
+    
+    setChatHistory(prev => [...prev, modeMessage]);
+  };
   
   // Code streaming state
   const [isStreamingCode, setIsStreamingCode] = useState(false);
@@ -275,178 +307,223 @@ export default function Zero280BuildPage() {
       return;
     }
     
-    // IMMEDIATE (0ms delay) - Show instant feedback
-    setIsLoading(true);
-    setCurrentStep('analyzing');
-    expandRelevantContainers();
+    // Check if we're in chat mode and trying to do code editing
+    if (chatMode === 'chat') {
+      // In chat mode, only allow discussion - no code editing
+      const editingKeywords = ['edit', 'change', 'modify', 'update', 'fix', 'add', 'remove', 'create', 'build', 'generate'];
+      const hasEditingIntent = editingKeywords.some(keyword => 
+        message.toLowerCase().includes(keyword)
+      );
+      
+      if (hasEditingIntent) {
+        // Add a warning message that code editing is not allowed in chat mode
+        const warningMessage = {
+          type: 'ai' as const,
+          message: '🚫 **Chat Mode Active**: I cannot make code changes while in Chat Mode. I can discuss and explain code, but to edit files, please switch to Agent Mode using the Chat button above.',
+          timestamp: new Date().toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true 
+          }) + ' on ' + new Date().toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric' 
+          }),
+          id: `warning_${Date.now()}`,
+          status: 'Mode Restriction'
+        };
+        
+        // Add user message and warning
+        const userMessage = {
+          type: 'user' as const,
+          message: message,
+          timestamp: new Date().toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true 
+          }) + ' on ' + new Date().toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric' 
+          }),
+          id: `msg_${Date.now()}_user`
+        };
+        
+        setChatHistory([userMessage, warningMessage]);
+        return;
+      }
+      
+      // In chat mode, provide a helpful discussion response instead of editing
+      const discussionResponse = {
+        type: 'ai' as const,
+        message: `💬 **Chat Mode**: I'd be happy to discuss "${message}"! In Chat Mode, I can explain concepts, answer questions, and provide guidance about your code without making any changes. What would you like to know?`,
+        timestamp: new Date().toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit',
+          hour12: true 
+        }) + ' on ' + new Date().toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: 'numeric' 
+        }),
+        id: `msg_${Date.now()}_ai`,
+        status: 'Discussion Only'
+      };
+      
+      const userMessage = {
+        type: 'user' as const,
+        message: message,
+        timestamp: new Date().toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit',
+          hour12: true 
+        }) + ' on ' + new Date().toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: 'numeric' 
+        }),
+        id: `msg_${Date.now()}_user`
+      };
+      
+      setChatHistory([userMessage, discussionResponse]);
+      return;
+    }
     
-    const timestamp = new Date().toLocaleTimeString('en-US', { 
-      hour: 'numeric', 
-      minute: '2-digit',
-      hour12: true 
-    }) + ' on ' + new Date().toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric' 
-    });
-    
-    // Add user message first
+    // In chat mode, allow discussion but send to AI for response (not code editing)
+    // Add user message immediately
     const userMessage = {
       type: 'user' as const,
       message: message,
-      timestamp: timestamp,
+      timestamp: new Date().toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      }),
       id: `msg_${Date.now()}_user`
     };
-    
-    // Start progress tracking
-    const messageId = `msg_${Date.now()}_ai`;
-    startMessageExecution(messageId);
-    startThinking(messageId, "Analyzing your request...");
-    
-    // Add AI thinking message
-    const newAIMessage = {
-      type: 'ai' as const,
-      message: 'Thinking...',
-      status: 'Processing',
-      timestamp: timestamp,
-      id: messageId
-    };
-
-    setChatHistory([userMessage, newAIMessage]);
-
-    try {
-      const response = await fetch('/api/zero280', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: message,
-          userId: undefined, // You can add user authentication later
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        
-        console.log('Response data received (initial):', data);
-        console.log('Artifacts received (initial):', data.artifacts);
-        
-        // Store conversation ID for future requests
-        if (data.conversationId) {
-          setCurrentConversationId(data.conversationId);
-          console.log('Conversation ID set:', data.conversationId);
-          
-          // Update URL to include conversation ID for refresh persistence
-          const newUrl = `/zero280/build?conversationId=${data.conversationId}`;
-          window.history.replaceState({}, '', newUrl);
-        }
-        
-        // Don't update artifacts immediately - wait for streaming to complete
-        if (data.artifacts && data.artifacts.length > 0) {
-          console.log('Preparing to stream artifacts (initial):', data.artifacts);
-        } else {
-          console.log('No artifacts in response (initial)');
-        }
-        
-        // Update the AI message with the actual response
-        setChatHistory(prev => prev.map((msg, index) => 
-          index === prev.length - 1 && msg.type === 'ai' 
-            ? { 
-                ...msg, 
-                message: data.response, 
-                status: undefined,
-                artifacts: data.artifacts,
-                toolResults: data.toolResults
-
-              }
-            : msg
-        ));
-        
-        // Handle streaming for new artifacts (initial creation only)
-        if (data.artifacts && data.artifacts.length > 0) {
-          // This is initial artifact creation
-          console.log('Streaming initial artifact');
-          stopThinking(); // Stop thinking as soon as we start streaming
-          setCurrentStep('building'); // Transition to building step
-          
-          const artifact = data.artifacts[0];
-          setStreamingArtifact(artifact);
-          setIsStreamingCode(true);
-          setStreamedContent('');
-          
-          // Simulate code streaming
-          const content = artifact.content;
-          const lines = content.split('\n');
-          let currentLine = 0;
-          
-          const streamInterval = setInterval(() => {
-            if (currentLine < lines.length) {
-              setStreamedContent(prev => prev + lines[currentLine] + '\n');
-              currentLine++;
-            } else {
-              clearInterval(streamInterval);
-              setIsStreamingCode(false);
-              
-              // Now update the artifacts with the final code - only after streaming is complete
-              const transformedArtifacts = data.artifacts.map((artifact: any) => {
-                console.log('Transforming artifact:', artifact);
-                const transformed = {
-                  id: artifact.id,
-                  name: artifact.name || artifact.metadata?.title || 'Untitled',
-                  type: artifact.type || artifact.metadata?.type || 'unknown', 
-                  content: artifact.content || artifact.data || '',
-                  description: artifact.description || artifact.metadata?.description || '',
-                  preview: artifact.preview || artifact.metadata?.preview || '',
-                  metadata: artifact.metadata,
-                  data: artifact.data
-                };
-                console.log('Transformed artifact:', transformed);
-                return transformed;
-              });
-              setCurrentArtifacts(transformedArtifacts);
-              
-              setCurrentStep('complete'); // Transition to complete step
-              resetStepIndicator(); // Reset after 3 seconds
-              completeMessageExecution();
-            }
-          }, 50); // Faster streaming for better effect
-        } else {
-          // Complete progress tracking
-          stopThinking();
-          completeMessageExecution();
-        }
-      } else {
-        // Handle error response
-        const errorData = await response.json();
-        setChatHistory(prev => prev.map((msg, index) => 
-          index === prev.length - 1 && msg.type === 'ai' 
-            ? { ...msg, message: `Error: ${errorData.error || 'Failed to get response'}`, status: undefined }
-            : msg
-        ));
-        
-        // Complete progress tracking with error
-        stopThinking();
-        completeMessageExecution();
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      // Update AI message with error
-      setChatHistory(prev => prev.map((msg, index) => 
-        index === prev.length - 1 && msg.type === 'ai' 
-          ? { ...msg, message: 'Sorry, I encountered an error. Please try again.', status: undefined }
-          : msg
-      ));
       
-      // Complete progress tracking with error
-      stopThinking();
-      completeMessageExecution();
-    } finally {
-      setIsLoading(false);
-    }
+      // Add AI thinking message
+      const newAIMessage = {
+        type: 'ai' as const,
+        message: 'Thinking...',
+        status: 'Processing',
+        timestamp: userMessage.timestamp,
+        id: `msg_${Date.now()}_ai`
+      };
+      
+      setChatHistory([userMessage, newAIMessage]);
+      
+      // Use streaming for Chat Mode responses
+      try {
+        // Start streaming the response
+        const response = await fetch('/api/zero280/stream', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: message,
+            userId: undefined,
+            mode: 'chat',
+            preventCodeEditing: true
+          }),
+        });
+
+        if (response.ok && response.body) {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let accumulatedText = '';
+          
+          // Update status to streaming
+          setChatHistory(prev => prev.map((msg, index) => 
+            index === prev.length - 1 && msg.type === 'ai' 
+              ? { ...msg, status: 'Streaming...' }
+              : msg
+          ));
+          
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              
+              if (done) break;
+              
+              const chunk = decoder.decode(value, { stream: true });
+              const lines = chunk.split('\n');
+              
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const data = line.slice(6);
+                  if (data === '[DONE]') break;
+                  
+                  try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.content) {
+                      accumulatedText += parsed.content;
+                      
+                      // Update the AI message with streaming content
+                      setChatHistory(prev => prev.map((msg, index) => 
+                        index === prev.length - 1 && msg.type === 'ai' 
+                          ? { 
+                              ...msg, 
+                              message: accumulatedText,
+                              status: 'Streaming...'
+                            }
+                          : msg
+                      ));
+                    }
+                  } catch (e) {
+                    console.warn('Failed to parse streaming chunk:', e);
+                  }
+                }
+              }
+            }
+            
+            // Final update - remove streaming status
+            setChatHistory(prev => prev.map((msg, index) => 
+              index === prev.length - 1 && msg.type === 'ai' 
+                ? { 
+                    ...msg, 
+                    message: accumulatedText,
+                    status: undefined
+                  }
+                : msg
+            ));
+            
+          } finally {
+            reader.releaseLock();
+          }
+          
+        } else {
+          // Fallback to regular response if streaming not available
+          const data = await response.json();
+          console.log('Chat Mode API response:', data);
+          
+          // Update the AI message with the actual response
+          setChatHistory(prev => prev.map((msg, index) => 
+            index === prev.length - 1 && msg.type === 'ai' 
+              ? { 
+                  ...msg, 
+                  message: data.response || 'No response received', 
+                  status: undefined,
+                  artifacts: data.artifacts || [],
+                  toolResults: data.toolResults || []
+                }
+              : msg
+          ));
+        }
+      } catch (error) {
+        console.error('Chat Mode streaming error:', error);
+        // Update AI message with error
+        setChatHistory(prev => prev.map((msg, index) => 
+          index === prev.length - 1 && msg.type === 'ai' 
+            ? { ...msg, message: `Error: ${error instanceof Error ? error.message : 'Network or API error'}`, status: undefined }
+            : msg
+        ));
+      }
+      
+      return;
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true);
+    setDragStartX(e.clientX);
+    setDragStartWidth(chatWidth);
     e.preventDefault();
     e.stopPropagation();
   };
@@ -455,42 +532,50 @@ export default function Zero280BuildPage() {
     if (!isDragging) return;
     
     e.preventDefault();
-    const newWidth = e.clientX;
+    const deltaX = e.clientX - dragStartX;
+    const newWidth = dragStartWidth + deltaX;
     
     // Set minimum and maximum widths with better constraints
     const minWidth = 280;
-    const maxWidth = window.innerWidth - 400;
+    const maxWidth = Math.max(window.innerWidth - 400, minWidth + 100);
     
     if (newWidth >= minWidth && newWidth <= maxWidth) {
       setChatWidth(newWidth);
     }
   };
 
-  const handleMouseUp = (e: MouseEvent) => {
+  const handleMouseUp = () => {
     if (isDragging) {
       setIsDragging(false);
-      e.preventDefault();
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (isDragging) {
+      setIsDragging(false);
     }
   };
 
   useEffect(() => {
     if (isDragging) {
-      // Use capture: true to ensure events are handled properly
-      document.addEventListener('mousemove', handleMouseMove, { capture: true });
-      document.addEventListener('mouseup', handleMouseUp, { capture: true });
-      document.addEventListener('mouseleave', handleMouseUp, { capture: true });
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.addEventListener('mouseleave', handleMouseLeave);
       
       document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
-      // Remove the pointerEvents = 'none' as it prevents dragging
+      document.body.style.pointerEvents = 'none';
+      document.body.classList.add('dragging');
       
       return () => {
-        document.removeEventListener('mousemove', handleMouseMove, { capture: true });
-        document.removeEventListener('mouseup', handleMouseUp, { capture: true });
-        document.removeEventListener('mouseleave', handleMouseUp, { capture: true });
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        document.removeEventListener('mouseleave', handleMouseLeave);
         
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
+        document.body.style.pointerEvents = '';
+        document.body.classList.remove('dragging');
       };
     }
   }, [isDragging]);
@@ -521,6 +606,189 @@ export default function Zero280BuildPage() {
 
     const userMessage = input.trim();
     setInput('');
+    
+    // Check if we're in chat mode and trying to do code editing
+    if (chatMode === 'chat') {
+      // In chat mode, only allow discussion - no code editing
+      const editingKeywords = ['edit', 'change', 'modify', 'update', 'fix', 'add', 'remove', 'create', 'build', 'generate'];
+      const hasEditingIntent = editingKeywords.some(keyword => 
+        userMessage.toLowerCase().includes(keyword)
+      );
+      
+      if (hasEditingIntent) {
+        // Add a warning message that code editing is not allowed in chat mode
+        const warningMessage = {
+          type: 'ai' as const,
+          message: '🚫 **Chat Mode Active**: I cannot make code changes while in Chat Mode. I can discuss and explain code, but to edit files, please switch to Agent Mode using the Chat button above.',
+          timestamp: new Date().toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true 
+          }) + ' on ' + new Date().toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric' 
+          }),
+          id: `warning_${Date.now()}`,
+          status: 'Mode Restriction'
+        };
+        
+        // Add user message and warning
+        const newUserMessage = {
+          type: 'user' as const,
+          message: userMessage,
+          timestamp: new Date().toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true 
+          }) + ' on ' + new Date().toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric' 
+          }),
+          id: `msg_${Date.now()}_user`
+        };
+        
+        setChatHistory(prev => [...prev, newUserMessage, warningMessage]);
+        return;
+      }
+      
+      // In chat mode, allow discussion but send to AI for response (not code editing)
+      // Add user message immediately
+      const newUserMessage = {
+        type: 'user' as const,
+        message: userMessage,
+        timestamp: new Date().toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit',
+          hour12: true 
+        }) + ' on ' + new Date().toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: 'numeric' 
+        }),
+        id: `msg_${Date.now()}_user`
+      };
+      
+      // Add AI thinking message
+      const newAIMessage = {
+        type: 'ai' as const,
+        message: 'Thinking...',
+        status: 'Processing',
+        timestamp: newUserMessage.timestamp,
+        id: `msg_${Date.now()}_ai`
+      };
+      
+      setChatHistory(prev => [...prev, newUserMessage, newAIMessage]);
+      
+      // Use streaming for Chat Mode responses
+      try {
+        // Start streaming the response
+        const response = await fetch('/api/zero280/stream', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: userMessage,
+            conversationId: currentConversationId,
+            userId: undefined,
+            mode: 'chat',
+            preventCodeEditing: true
+          }),
+        });
+
+        if (response.ok && response.body) {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let accumulatedText = '';
+          
+          // Update status to streaming
+          setChatHistory(prev => prev.map((msg, index) => 
+            index === prev.length - 1 && msg.type === 'ai' 
+              ? { ...msg, status: 'Streaming...' }
+              : msg
+          ));
+          
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              
+              if (done) break;
+              
+              const chunk = decoder.decode(value, { stream: true });
+              const lines = chunk.split('\n');
+              
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const data = line.slice(6);
+                  if (data === '[DONE]') break;
+                  
+                  try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.content) {
+                      accumulatedText += parsed.content;
+                      
+                      // Update the AI message with streaming content
+                      setChatHistory(prev => prev.map((msg, index) => 
+                        index === prev.length - 1 && msg.type === 'ai' 
+                          ? { 
+                              ...msg, 
+                              message: accumulatedText,
+                              status: 'Streaming...'
+                            }
+                          : msg
+                      ));
+                    }
+                  } catch (e) {
+                    console.warn('Failed to parse streaming chunk:', e);
+                  }
+                }
+              }
+            }
+            
+            // Final update - remove streaming status
+            setChatHistory(prev => prev.map((msg, index) => 
+              index === prev.length - 1 && msg.type === 'ai' 
+                ? { 
+                    ...msg, 
+                    message: accumulatedText,
+                    status: undefined
+                  }
+                : msg
+            ));
+            
+          } finally {
+            reader.releaseLock();
+          }
+          
+        } else {
+          // Fallback to regular response if streaming not available
+          const data = await response.json();
+          console.log('Chat Mode API response:', data);
+          
+          // Update the AI message with the actual response
+          setChatHistory(prev => prev.map((msg, index) => 
+            index === prev.length - 1 && msg.type === 'ai' 
+              ? { 
+                  ...msg, 
+                  message: data.response || 'No response received', 
+                  status: undefined,
+                  artifacts: data.artifacts || [],
+                  toolResults: data.toolResults || []
+                }
+              : msg
+          ));
+        }
+      } catch (error) {
+        console.error('Chat Mode streaming error:', error);
+        // Update AI message with error
+        setChatHistory(prev => prev.map((msg, index) => 
+          index === prev.length - 1 && msg.type === 'ai' 
+            ? { ...msg, message: `Error: ${error instanceof Error ? error.message : 'Network or API error'}`, status: undefined }
+            : msg
+        ));
+      }
+      
+      return;
+    }
     
     // IMMEDIATE (0ms delay) - Show instant feedback
     setIsLoading(true);
@@ -777,6 +1045,20 @@ export default function Zero280BuildPage() {
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
       <style jsx>{`
+        @font-face {
+          font-family: 'styreneB';
+          src: url('/styrene-font-family-1755760563-0/StyreneB-Regular-Trial-BF63f6cbe9db1d5.otf') format('opentype');
+          font-weight: 400;
+          font-style: normal;
+        }
+        
+        @font-face {
+          font-family: 'styreneB';
+          src: url('/styrene-font-family-1755760563-0/StyreneB-Bold-Trial-BF63f6cbe9f13bb.otf') format('opentype');
+          font-weight: 700;
+          font-style: normal;
+        }
+        
         @keyframes blink {
           0%, 50% { opacity: 1; }
           51%, 100% { opacity: 0; }
@@ -791,6 +1073,22 @@ export default function Zero280BuildPage() {
           overflow: hidden;
           white-space: nowrap;
           animation: typewriter 0.1s steps(1);
+        }
+        
+        .user-message {
+          font-family: 'styreneB', system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+          font-weight: 400;
+          font-size: 15px;
+          line-height: 24px;
+          letter-spacing: normal;
+        }
+        
+        /* Prevent text selection during drag */
+        .dragging * {
+          user-select: none !important;
+          -webkit-user-select: none !important;
+          -moz-user-select: none !important;
+          -ms-user-select: none !important;
         }
       `}</style>
       {/* Top Navigation Bar */}
@@ -835,6 +1133,14 @@ export default function Zero280BuildPage() {
                 'Loading Live Preview...'
               )}
             </div>
+            {/* Mode Indicator */}
+            <div className={`ml-4 px-2 py-1 rounded-full text-xs font-medium border ${
+              chatMode === 'chat' 
+                ? 'bg-blue-100 text-blue-700 border-blue-300' 
+                : 'bg-emerald-100 text-emerald-700 border-emerald-300'
+            }`}>
+              {chatMode === 'chat' ? '💬 Chat Mode' : '🤖 Agent Mode'}
+            </div>
           </div>
           
           <div className="flex items-center space-x-3">
@@ -876,7 +1182,11 @@ export default function Zero280BuildPage() {
         {/* Left Column - Chat Interface */}
         <div 
           className="bg-gray-100 flex flex-col h-full"
-          style={{ width: `${chatWidth}px` }}
+          style={{ 
+            width: `${chatWidth}px`,
+            minWidth: '280px',
+            maxWidth: `${Math.max(window.innerWidth - 400, 380)}px`
+          }}
           onWheel={(e) => e.stopPropagation()} // Prevent scroll bubbling
         >
           {/* Conversation Manager */}
@@ -914,7 +1224,7 @@ export default function Zero280BuildPage() {
             {chatHistory.map((chat, index) => (
               <div key={index} className={`flex ${chat.type === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {chat.type === 'user' ? (
-                  <div className="bg-gray-300 text-gray-800 px-4 py-2 rounded-2xl max-w-xs">
+                  <div className="bg-gray-300 text-gray-800 px-4 py-2 rounded-2xl max-w-xs user-message">
                     {chat.message}
                   </div>
                 ) : (
@@ -935,6 +1245,22 @@ export default function Zero280BuildPage() {
                             <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
                           </div>
                         )}
+                        {chat.status === 'Streaming...' && (
+                          <div className="flex items-center space-x-2">
+                            <div className="flex space-x-1">
+                              <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce"></div>
+                              <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                              <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                            </div>
+                            <span className="text-blue-600 font-medium">Streaming...</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {/* Streaming cursor indicator */}
+                    {chat.status === 'Streaming...' && (
+                      <div className="mt-2">
+                        <span className="inline-block w-2 h-4 bg-blue-500 animate-pulse" style={{animation: 'blink 1s infinite'}}></span>
                       </div>
                     )}
                     <div className="flex items-center justify-between mt-2">
@@ -1042,10 +1368,41 @@ export default function Zero280BuildPage() {
           </div>
 
           {/* Chat Input - Fixed at Bottom */}
-          <div className="flex-shrink-0 p-4 border-t border-gray-200 bg-gray-100 chat-input-container">
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-4">
+          <div className="flex-shrink-0 p-3 border-t border-gray-200 bg-gray-100 chat-input-container">
+            {/* Mode Status Indicator */}
+            <div className={`mb-3 p-2 rounded-lg border text-xs ${
+              chatMode === 'chat' 
+                ? 'bg-blue-50 border-blue-200 text-blue-800' 
+                : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  {chatMode === 'chat' ? (
+                    <>
+                      <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                      <span className="font-medium">Chat Mode Active</span>
+                      <span>• Safe discussion only</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                      <span className="font-medium">Agent Mode Active</span>
+                      <span>• Full code editing enabled</span>
+                    </>
+                  )}
+                </div>
+                <button 
+                  onClick={toggleChatMode}
+                  className="text-xs underline hover:no-underline"
+                >
+                  Switch to {chatMode === 'chat' ? 'Agent' : 'Chat'} Mode
+                </button>
+              </div>
+            </div>
+            
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-3">
               {/* Text Input Area */}
-              <div className="mb-4">
+              <div className="mb-3">
                 <input
                   type="text"
                   value={input}
@@ -1056,9 +1413,12 @@ export default function Zero280BuildPage() {
                       handleSubmit(e);
                     }
                   }}
-                  placeholder="Ask me anything..."
-                  className="w-full bg-transparent text-gray-800 text-lg placeholder-gray-400 focus:outline-none border-none resize-none"
-                  style={{ fontFamily: 'var(--font-geist-sans)' }}
+                  placeholder={chatMode === 'chat' 
+                    ? "Ask me about your code (I can explain but not edit)..." 
+                    : "Ask me to build, edit, or modify your code..."
+                  }
+                  className="w-full bg-transparent text-gray-800 text-base placeholder-gray-400 focus:outline-none border-none resize-none user-message"
+                  style={{ fontFamily: 'styreneB, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"' }}
                 />
               </div>
               
@@ -1079,11 +1439,22 @@ export default function Zero280BuildPage() {
                 
                 {/* Right Side Buttons */}
                 <div className="flex items-center space-x-3">
-                  <button className="px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center space-x-2 text-sm text-gray-600 transition-colors border border-gray-200">
+                  <button 
+                    onClick={toggleChatMode}
+                    className={`px-3 py-1.5 rounded-full flex items-center space-x-2 text-sm transition-colors border ${
+                      chatMode === 'chat' 
+                        ? 'bg-blue-100 text-blue-700 border-blue-300 hover:bg-blue-200' 
+                        : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                    }`}
+                    title={chatMode === 'chat' ? 'Currently in Chat Mode - Click to switch to Agent Mode' : 'Currently in Agent Mode - Click to switch to Chat Mode'}
+                  >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                     </svg>
-                    <span>Chat</span>
+                    <span>{chatMode === 'chat' ? 'Chat Mode' : 'Agent Mode'}</span>
+                    {chatMode === 'chat' && (
+                      <span className="text-xs bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded-full">Safe</span>
+                    )}
                   </button>
                   <button
                     onClick={handleSubmit}
@@ -1102,15 +1473,21 @@ export default function Zero280BuildPage() {
 
         {/* Draggable Splitter */}
         <div
-          className={`w-1 flex items-center justify-center transition-all duration-200 ${
-            isDragging ? 'bg-blue-500 w-2' : 'bg-gray-300 hover:bg-blue-400 hover:w-2'
+          className={`flex items-center justify-center transition-all duration-150 ${
+            isDragging ? 'bg-blue-500 w-2 shadow-lg' : 'bg-gray-300 hover:bg-blue-400 hover:w-2'
           }`}
           onMouseDown={handleMouseDown}
-          style={{ cursor: 'col-resize' }}
+          style={{ 
+            cursor: 'col-resize',
+            width: isDragging ? '8px' : '4px'
+          }}
         >
-          <div className={`rounded-full transition-all duration-200 ${
-            isDragging ? 'w-1 h-12 bg-white' : 'w-0.5 h-8 bg-gray-400'
+          <div className={`rounded-full transition-all duration-150 ${
+            isDragging ? 'w-1 h-16 bg-white shadow-lg' : 'w-0.5 h-12 bg-gray-400'
           }`}></div>
+          {isDragging && (
+            <div className="absolute inset-0 bg-blue-500/20 rounded-full"></div>
+          )}
         </div>
 
         {/* Right Column - Preview/Code Generator */}
